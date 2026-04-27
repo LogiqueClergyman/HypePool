@@ -1,0 +1,7 @@
+# Rust's output directory
+target
+specs.md
+# Local settings
+.soroban
+.stellar
+
