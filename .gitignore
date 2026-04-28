@@ -1,0 +1,5 @@
+backend_specs.md
+node_modules
+dist
+/generated/prisma
+.env

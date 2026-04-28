@@ -1,0 +1,136 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             String            @id @default(uuid())
+  stellarAddress String            @unique @map("stellar_address")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  bets           Bet[]
+  custodialWallet CustodialWallet?
+
+  @@map("users")
+}
+
+model CustodialWallet {
+  id               String   @id @default(uuid())
+  userId           String   @unique @map("user_id")
+  user             User     @relation(fields: [userId], references: [id])
+  custodialAddress String   @unique @map("custodial_address")
+  encryptedKey     String   @map("encrypted_key")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@map("custodial_wallets")
+}
+
+model Content {
+  id              String   @id @default(uuid())
+  platform        String                         // "youtube", "twitter", "instagram", "tiktok"
+  externalId      String   @map("external_id")   // platform-specific ID (e.g. YouTube video ID)
+  url             String   @unique
+  title           String
+  author          String                         // channel name, username, etc.
+  thumbnailUrl    String   @map("thumbnail_url")
+  publishedAt     DateTime @map("published_at")
+  currentViews    BigInt   @map("current_views")
+  lastFetchedAt   DateTime @map("last_fetched_at")
+  createdAt       DateTime @default(now()) @map("created_at")
+  markets         Market[]
+
+  @@unique([platform, externalId])
+  @@map("content")
+}
+
+model Market {
+  id                 String        @id @default(uuid())
+  contentId          String        @map("content_id")
+  content            Content       @relation(fields: [contentId], references: [id])
+  onchainId          Int           @map("onchain_id")
+  contractAddress    String        @map("contract_address")
+  threshold          BigInt
+  windowHours        Int           @map("window_hours")
+  deadline           DateTime
+  resolutionDeadline DateTime      @map("resolution_deadline")
+  minBet             BigInt        @map("min_bet")
+  yesPool            BigInt        @default(0) @map("yes_pool")
+  noPool             BigInt        @default(0) @map("no_pool")
+  yesWeightedPool    BigInt        @default(0) @map("yes_weighted_pool")
+  noWeightedPool     BigInt        @default(0) @map("no_weighted_pool")
+  totalBettors       Int           @default(0) @map("total_bettors")
+  status             MarketStatus  @default(ACTIVE)
+  outcome            MarketOutcome?
+  resolvedAt         DateTime?     @map("resolved_at")
+  settledAt          DateTime?     @map("settled_at")
+  createdAt          DateTime      @default(now()) @map("created_at")
+  bets               Bet[]
+
+  @@unique([contentId, threshold, windowHours])
+  @@map("markets")
+}
+
+enum MarketStatus {
+  ACTIVE
+  RESOLVED_YES
+  RESOLVED_NO
+  EXPIRED
+}
+
+enum MarketOutcome {
+  YES
+  NO
+}
+
+model Bet {
+  id          String   @id @default(uuid())
+  userId      String   @map("user_id")
+  user        User     @relation(fields: [userId], references: [id])
+  marketId    String   @map("market_id")
+  market      Market   @relation(fields: [marketId], references: [id])
+  side        BetSide
+  amount      BigInt
+  payout      BigInt?
+  claimed     Boolean  @default(false)
+  txHash      String   @map("tx_hash")
+  claimTxHash String?  @map("claim_tx_hash")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("bets")
+}
+
+enum BetSide {
+  YES
+  NO
+}
+
+model Interaction {
+  id          String            @id @default(uuid())
+  type        InteractionType
+  userAddress String            @map("user_address")
+  marketId    String?           @map("market_id")
+  xdr         String
+  status      InteractionStatus @default(PENDING)
+  txHash      String?           @map("tx_hash")
+  metadata    Json?
+  createdAt   DateTime          @default(now()) @map("created_at")
+  confirmedAt DateTime?         @map("confirmed_at")
+  expiresAt   DateTime          @map("expires_at")
+
+  @@map("interactions")
+}
+
+enum InteractionType {
+  BET
+  MARKET_CREATE
+  WITHDRAW
+}
+
+enum InteractionStatus {
+  PENDING
+  CONFIRMED
+  EXPIRED
+  FAILED
+}
