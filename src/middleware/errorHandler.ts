@@ -12,6 +12,6 @@ export function errorHandler(err: Error, req: Request, res: Response, next: Next
   console.error('Unhandled error:', err);
   return res.status(500).json({
     error: 'internal_error',
-    message: 'An unexpected error occurred',
+    message: err instanceof Error ? err.stack : 'An unexpected error occurred',
   });
 }

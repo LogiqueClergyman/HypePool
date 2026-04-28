@@ -1,8 +1,8 @@
-// View count threshold ladder — tiers are always picked from this list
 export const VIEW_LADDER: number[] = [
   1_000, 5_000, 10_000, 25_000, 50_000, 100_000,
   250_000, 500_000, 1_000_000, 2_500_000, 5_000_000,
   10_000_000, 25_000_000, 50_000_000, 100_000_000,
+  500_000_000, 1_000_000_000, 2_000_000_000, 5_000_000_000
 ];
 
 // Max tiers offered per content
