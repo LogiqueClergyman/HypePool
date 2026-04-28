@@ -41,6 +41,7 @@ fn setup_factory_test<'a>() -> (Env, MarketFactoryClient<'a>, Address, Address, 
         oracle: oracle.clone(),
         creator: creator.clone(),
         platform_fee_bps: 200,
+        created_at: 0,
     };
     
     env.ledger().with_mut(|li| li.timestamp = 500);

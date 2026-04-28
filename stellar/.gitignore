@@ -1,6 +1,7 @@
 # Rust's output directory
 target
 specs.md
+specs_v2_changes.md
 # Local settings
 .soroban
 .stellar

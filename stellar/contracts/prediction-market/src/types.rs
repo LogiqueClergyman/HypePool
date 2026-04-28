@@ -1,6 +1,13 @@
 use soroban_sdk::{contracttype, Address, String};
 
 #[contracttype]
+#[derive(Clone, Debug)]
+pub struct BetInfo {
+    pub amount: i128,           // raw bet amount (used for refunds, display)
+    pub weighted_amount: i128,  // time-weighted amount (used for payout calculation)
+}
+
+#[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ContentType {
     YouTube = 0,
@@ -41,6 +48,7 @@ pub struct MarketConfig {
     pub oracle: Address,
     pub creator: Address,
     pub platform_fee_bps: u32,
+    pub created_at: u64,
 }
 
 #[contracttype]
@@ -48,6 +56,8 @@ pub struct MarketConfig {
 pub struct MarketState {
     pub yes_pool: i128,
     pub no_pool: i128,
+    pub yes_weighted_pool: i128,
+    pub no_weighted_pool: i128,
     pub outcome: Outcome,
     pub total_bettors: u32,
 }

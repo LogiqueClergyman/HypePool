@@ -32,11 +32,15 @@ impl PredictionMarket {
             return Err(MarketError::InvalidConfig);
         }
 
+        let mut config = config;
+        config.created_at = env.ledger().timestamp();
         storage::set_config(&env, &config);
         
         let state = MarketState {
             yes_pool: 0,
             no_pool: 0,
+            yes_weighted_pool: 0,
+            no_weighted_pool: 0,
             outcome: Outcome::Unresolved,
             total_bettors: 0,
         };
@@ -63,14 +67,33 @@ impl PredictionMarket {
         token_client.transfer(&user, &env.current_contract_address(), &amount);
 
         let mut state = storage::get_state(&env);
-        let current = storage::get_yes_bet(&env, &user);
-        
-        if current == 0 && storage::get_no_bet(&env, &user) == 0 {
+        let config = storage::get_config(&env);
+
+        let time_remaining = config.deadline - env.ledger().timestamp();
+        let total_window = config.deadline - config.created_at;
+        let weighted_amount = amount * (time_remaining as i128) * (time_remaining as i128)
+                            / ((total_window as i128) * (total_window as i128));
+
+        let existing = storage::get_yes_bet(&env, &user);
+
+        if existing.is_none() && storage::get_no_bet(&env, &user).is_none() {
             state.total_bettors += 1;
         }
 
-        storage::set_yes_bet(&env, &user, current + amount);
+        let new_info = match existing {
+            Some(prev) => types::BetInfo {
+                amount: prev.amount + amount,
+                weighted_amount: prev.weighted_amount + weighted_amount,
+            },
+            None => types::BetInfo {
+                amount,
+                weighted_amount,
+            },
+        };
+        storage::set_yes_bet(&env, &user, &new_info);
+
         state.yes_pool += amount;
+        state.yes_weighted_pool += weighted_amount;
         storage::set_state(&env, &state);
 
         Ok(())
@@ -94,14 +117,33 @@ impl PredictionMarket {
         token_client.transfer(&user, &env.current_contract_address(), &amount);
 
         let mut state = storage::get_state(&env);
-        let current = storage::get_no_bet(&env, &user);
-        
-        if current == 0 && storage::get_yes_bet(&env, &user) == 0 {
+        let config = storage::get_config(&env);
+
+        let time_remaining = config.deadline - env.ledger().timestamp();
+        let total_window = config.deadline - config.created_at;
+        let weighted_amount = amount * (time_remaining as i128) * (time_remaining as i128)
+                            / ((total_window as i128) * (total_window as i128));
+
+        let existing = storage::get_no_bet(&env, &user);
+
+        if existing.is_none() && storage::get_yes_bet(&env, &user).is_none() {
             state.total_bettors += 1;
         }
 
-        storage::set_no_bet(&env, &user, current + amount);
+        let new_info = match existing {
+            Some(prev) => types::BetInfo {
+                amount: prev.amount + amount,
+                weighted_amount: prev.weighted_amount + weighted_amount,
+            },
+            None => types::BetInfo {
+                amount,
+                weighted_amount,
+            },
+        };
+        storage::set_no_bet(&env, &user, &new_info);
+
         state.no_pool += amount;
+        state.no_weighted_pool += weighted_amount;
         storage::set_state(&env, &state);
 
         Ok(())
@@ -158,31 +200,30 @@ impl PredictionMarket {
             return Err(MarketError::AlreadyClaimed);
         }
 
-        let winning_bet = if state.outcome == Outcome::Yes {
-            storage::get_yes_bet(&env, &user)
-        } else {
-            storage::get_no_bet(&env, &user)
+        let winning_bet_info = match state.outcome {
+            Outcome::Yes => storage::get_yes_bet(&env, &user),
+            Outcome::No => storage::get_no_bet(&env, &user),
+            _ => unreachable!(),
         };
 
-        if winning_bet <= 0 {
+        if winning_bet_info.is_none() || winning_bet_info.as_ref().unwrap().amount <= 0 {
             return Err(MarketError::NothingToClaim);
         }
+        let winning_bet_info = winning_bet_info.unwrap();
 
-        user.require_auth();
-
-        let (winning_pool, losing_pool) = if state.outcome == Outcome::Yes {
-            (state.yes_pool, state.no_pool)
+        let (winning_pool, losing_pool, winning_weighted_pool) = if state.outcome == Outcome::Yes {
+            (state.yes_pool, state.no_pool, state.yes_weighted_pool)
         } else {
-            (state.no_pool, state.yes_pool)
+            (state.no_pool, state.yes_pool, state.no_weighted_pool)
         };
 
         let fee = storage::get_fee_collected(&env);
         let net_losing_pool = losing_pool - fee;
         
-        let payout = if winning_pool == 0 {
-            winning_bet
+        let payout = if winning_weighted_pool == 0 {
+            winning_bet_info.amount
         } else {
-            winning_bet + (winning_bet * net_losing_pool) / winning_pool
+            winning_bet_info.amount + (winning_bet_info.weighted_amount * net_losing_pool) / winning_weighted_pool
         };
 
         let config = storage::get_config(&env);
@@ -209,7 +250,9 @@ impl PredictionMarket {
             return Err(MarketError::NotRefundable);
         }
 
-        let total = storage::get_yes_bet(&env, &user) + storage::get_no_bet(&env, &user);
+        let yes_info = storage::get_yes_bet(&env, &user);
+        let no_info = storage::get_no_bet(&env, &user);
+        let total = yes_info.map_or(0, |b| b.amount) + no_info.map_or(0, |b| b.amount);
         if total <= 0 {
             return Err(MarketError::NothingToRefund);
         }
@@ -272,9 +315,9 @@ impl PredictionMarket {
         Ok(storage::get_state(&env))
     }
 
-    pub fn get_position(env: Env, user: Address) -> (i128, i128) {
-        let yes_bet = storage::get_yes_bet(&env, &user);
-        let no_bet = storage::get_no_bet(&env, &user);
+    pub fn get_position(env: Env, user: Address) -> (types::BetInfo, types::BetInfo) {
+        let yes_bet = storage::get_yes_bet(&env, &user).unwrap_or(types::BetInfo { amount: 0, weighted_amount: 0 });
+        let no_bet = storage::get_no_bet(&env, &user).unwrap_or(types::BetInfo { amount: 0, weighted_amount: 0 });
         (yes_bet, no_bet)
     }
 
