@@ -3,7 +3,7 @@
 export const dynamic = "force-dynamic";
 
 import { useState, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { useWallet } from "@/contexts/WalletContext";
 import {
   getUserPortfolio,
@@ -13,7 +13,7 @@ import {
   type Portfolio,
   type BetRecord,
 } from "@/lib/api";
-import { TrendingUp, TrendingDown, Zap } from "lucide-react";
+import { Zap } from "lucide-react";
 
 type FilterTab = "all" | "active" | "won" | "lost";
 
@@ -55,10 +55,10 @@ function StatCard({
 function BetCard({ bet, delay = 0 }: { bet: BetRecord; delay?: number }) {
   const side = bet.side.toString().toUpperCase();
   const amount = stroopsToXlm(bet.amount);
-  const payoutNum = Number(bet.payout ?? "0");
   const isActive = bet.market.status === "ACTIVE";
-  const isWon = !isActive && payoutNum > 0;
-  const isLost = !isActive && !isWon;
+  const outcome = bet.market.outcome?.toUpperCase() ?? null;
+  const isWon = !isActive && outcome !== null && side === outcome;
+  const isLost = !isActive && outcome !== null && side !== outcome;
   const thresholdStr = formatViews(Number(bet.market.threshold));
 
   return (
@@ -181,6 +181,7 @@ export default function PortfolioPage() {
 
   useEffect(() => {
     if (!address) return;
+    setBets([]);
     setPage(1);
     fetchBets(address, tab, 1);
   }, [address, tab, fetchBets]);
@@ -294,27 +295,15 @@ export default function PortfolioPage() {
       </div>
 
       {/* Bet list */}
-      <AnimatePresence mode="wait">
+      <div className="min-h-[120px]">
         {loading ? (
-          <motion.div
-            key="loading"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="py-20 text-center"
-          >
+          <div className="py-16 text-center">
             <p className="text-[9px] font-black text-muted-foreground tracking-[0.3em] animate-pulse">
               LOADING…
             </p>
-          </motion.div>
+          </div>
         ) : bets.length === 0 ? (
-          <motion.div
-            key="empty"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="py-20 text-center border border-white/8"
-          >
+          <div className="py-16 text-center border border-white/8">
             <p className="text-[9px] font-black text-muted-foreground tracking-[0.3em]">
               {tab === "active"
                 ? "NO ACTIVE BETS"
@@ -332,21 +321,15 @@ export default function PortfolioPage() {
                 BROWSE MARKETS →
               </a>
             )}
-          </motion.div>
+          </div>
         ) : (
-          <motion.div
-            key={`${tab}-${page}`}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="space-y-2"
-          >
+          <div className="space-y-2">
             {bets.map((bet, i) => (
               <BetCard key={bet.id} bet={bet} delay={i * 0.04} />
             ))}
-          </motion.div>
+          </div>
         )}
-      </AnimatePresence>
+      </div>
 
       {/* Pagination */}
       {!loading && totalPages > 1 && (

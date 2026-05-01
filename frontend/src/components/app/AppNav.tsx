@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useWallet } from "@/contexts/WalletContext";
-import { Zap, User, BarChart3, LogOut } from "lucide-react";
+import { User, LogOut, Zap } from "lucide-react";
+import { Logo } from "../Logo";
 
 export default function AppNav() {
   const { address, connected, connect, disconnect, connecting } = useWallet();
@@ -10,10 +11,10 @@ export default function AppNav() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 h-14 border-b border-white/10 bg-[#080808]/90 backdrop-blur-md flex items-center px-6">
       {/* Logo */}
-      <Link href="/" className="flex items-center gap-2 mr-10 shrink-0">
-        <Zap className="w-4 h-4 text-[#00FF85] fill-[#00FF85]" />
-        <span className="text-[10px] font-black tracking-[0.3em] text-white uppercase">
-          HP_PROTOCOL
+      <Link href="/" className="flex items-center gap-3 mr-10 shrink-0 group">
+        <Logo size={22} />
+        <span className="font-black text-[15px] tracking-tighter text-white uppercase italic leading-none">
+          HYPE<span className="text-primary">POOL</span>
         </span>
       </Link>
 
