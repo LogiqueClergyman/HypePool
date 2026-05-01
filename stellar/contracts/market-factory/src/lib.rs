@@ -40,7 +40,9 @@ impl MarketFactory {
 
         let market_client = PredictionMarketClient::new(&env, &market_address);
         let mut market_config = config;
-        market_config.creator = creator.clone();
+        
+        // TODO: Tests not written for admin being the sole creator regardless of who creates the market
+        market_config.creator = storage::get_admin(&env);
         market_client.initialize(&market_config);
 
         storage::set_market_addr(&env, market_id, &market_address);
