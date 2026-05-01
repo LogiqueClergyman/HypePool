@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "NODE_OPTIONS=--max-old-space-size=512 tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "start": "NODE_OPTIONS=--max-old-space-size=512 node dist/index.js",
     "db:migrate": "npx prisma migrate dev",
     "db:generate": "npx prisma generate",
