@@ -1,6 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { registry } from '../providers/registry';
 import { getStellarService } from '../services/stellar';
+import { logger } from '../lib/logger';
 
 export async function resolveMarkets(): Promise<void> {
   try {
@@ -47,7 +48,7 @@ export async function resolveMarkets(): Promise<void> {
           market.status = `RESOLVED_${result.outcome.toUpperCase()}` as any;
           market.outcome = result.outcome.toUpperCase() as any;
         } catch (e) {
-          console.error(`Failed to execute on-chain resolution for market ${market.id}:`, e);
+          logger.error({ err: e, marketId: market.id }, 'Failed to execute on-chain resolution');
           continue; // Retry on next cron loop
         }
       }
@@ -71,7 +72,7 @@ export async function resolveMarkets(): Promise<void> {
               data: { claimed: true, claimTxHash: txHash, payout }
             });
           } catch (e) {
-            console.error(`Failed to claim for user ${bet.user.stellarAddress} on market ${market.id}:`, e);
+            logger.error({ err: e, marketId: market.id, user: bet.user.stellarAddress }, 'Failed to claim payout');
             allSuccess = false;
           }
         }
@@ -85,6 +86,6 @@ export async function resolveMarkets(): Promise<void> {
       }
     }
   } catch (error) {
-    console.error('Scheduler resolution failed:', error);
+    logger.error({ err: error }, 'Scheduler resolution failed');
   }
 }

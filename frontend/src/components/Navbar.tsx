@@ -65,7 +65,7 @@ export default function Navbar() {
               href="/app"
               className="px-6 py-2.5 text-xs font-black uppercase tracking-widest bg-primary text-black hover:bg-white transition-all duration-200 neon-glow"
             >
-              LAUNCH APP
+              PORTFOLIO
             </a>
           </div>
 
@@ -111,7 +111,7 @@ export default function Navbar() {
                   className="block w-full py-3 text-xs font-black tracking-widest bg-primary text-black uppercase text-center"
                   onClick={() => setMobileOpen(false)}
                 >
-                  LAUNCH APP
+                  PORTFOLIO
                 </a>
               </div>
             </div>

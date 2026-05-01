@@ -10,6 +10,7 @@ import { WalletService } from '../services/wallet';
 import { config } from '../config';
 import { TIME_WINDOWS, DEFAULT_MIN_BET, PLATFORM_FEE_BPS, RESOLUTION_GRACE_HOURS } from '../constants';
 import { rpc, Address, Keypair } from '@stellar/stellar-sdk';
+import { logger } from '../lib/logger';
 
 const router = Router();
 
@@ -115,10 +116,8 @@ router.post('/submit', validate(submitSchema), async (req: Request, res: Respons
       const marketsCreated = [];
       const txHashes = [];
 
-      console.log("[CONTENT_SUBMIT] Starting market creation loop, tiers:", tiers, "windows:", windows);
       for (const tier of tiers) {
         for (const window of windows) {
-          console.log(`[CONTENT_SUBMIT] Processing tier=${tier}, window=${window}`);
           const now = Math.floor(Date.now() / 1000);
           const deadline = now + (window * 3600);
           const resolutionDeadline = deadline + (RESOLUTION_GRACE_HOURS * 3600);
@@ -129,14 +128,10 @@ router.post('/submit', validate(submitSchema), async (req: Request, res: Respons
           let contractAddress = '';
 
           try {
-             // Validate duplicate DB early
-            console.log(`[CONTENT_SUBMIT] Checking for duplicate: contentId=${contentRecord.id}, tier=${tier}, window=${window}`);
             let exists = await prisma.market.findUnique({
               where: { contentId_threshold_windowHours: { contentId: contentRecord.id, threshold: BigInt(tier), windowHours: window } }
             });
-            console.log(`[CONTENT_SUBMIT] Duplicate check result: exists=${exists ? 'YES (will return existing)' : 'NO (proceeding)'}`);
             if (exists) {
-              // Try to heal older rows that were stored with a wrong contract address/onchain id.
               try {
                 const canonicalAddress = await stellarService.getFactoryMarketAddress(userKeypair.publicKey(), exists.onchainId);
                 if (exists.contractAddress !== canonicalAddress) {
@@ -147,7 +142,7 @@ router.post('/submit', validate(submitSchema), async (req: Request, res: Respons
                   exists.contractAddress = canonicalAddress;
                 }
               } catch (reconcileError) {
-                console.warn(`[CONTENT_SUBMIT] Existing market ${exists.id} has invalid onchain reference; recreating`, reconcileError);
+                logger.warn({ err: reconcileError, marketId: exists.id }, 'Existing market has invalid onchain reference; recreating');
                 await prisma.market.delete({ where: { id: exists.id } });
                 exists = null;
                 // Continue normal create path below.
@@ -168,7 +163,6 @@ router.post('/submit', validate(submitSchema), async (req: Request, res: Respons
               continue; // skip to next iteration
             }
 
-            console.log("[CONTENT_SUBMIT] Building market config...");
             const marketConfig = {
               contentUrl: details.url,
               contentType: 0, // 0 for YouTube according to enums
@@ -187,14 +181,12 @@ router.post('/submit', validate(submitSchema), async (req: Request, res: Respons
             marketConfig.oracleAddress = Keypair.fromSecret(config.stellar.oracleSecret).publicKey();
 
             const xdr = await stellarService.buildCreateMarketTx(userKeypair.publicKey(), marketConfig);
-            console.log("[CONTENT_SUBMIT] Built XDR, calling signAndSubmit...");
             const result = await stellarService.signAndSubmit(xdr, userKeypair);
-            console.log("[CONTENT_SUBMIT] Got result:", result ? "yes" : "null", "txHash:", result?.txHash, "txResponse:", result?.txResponse ? "yes" : "null");
             txHash = result.txHash;
             txResponse = result.txResponse;
             txHashes.push(txHash);
             contractAddress = await stellarService.getFactoryMarketAddress(userKeypair.publicKey(), onchainId);
-            console.log("[CONTENT_SUBMIT] Resolved factory market address:", contractAddress, "for id:", onchainId);
+            logger.info({ txHash, contractAddress, onchainId }, 'Market created on-chain');
 
             const market = await prisma.market.create({
               data: {
@@ -219,15 +211,12 @@ router.post('/submit', validate(submitSchema), async (req: Request, res: Respons
               tx_hash: txHash,
             });
           } catch(e) {
-             console.error("Failed to create market:", e);
-             throw e;
-          } finally {
-            console.log("[CREATE_MARKET] onchainId:", onchainId, "contractAddress:", contractAddress, "txHash:", txHash);
+            logger.error({ err: e, tier, window }, 'Failed to create market');
+            throw e;
           }
         }
       }
 
-      console.log("[CONTENT_SUBMIT] Returning response, marketsCreated count:", marketsCreated.length);
       return res.status(201).json({
         content_id: contentRecord.id,
         markets_created: marketsCreated,

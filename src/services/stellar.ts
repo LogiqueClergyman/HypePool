@@ -1,5 +1,6 @@
 import { rpc, Contract, TransactionBuilder, Keypair, nativeToScVal, Address, xdr } from '@stellar/stellar-sdk';
 import { config as appConfig } from '../config';
+import { logger } from '../lib/logger';
 
 let _singleton: StellarService | null = null;
 
@@ -193,7 +194,7 @@ export class StellarService {
       txResponse = await withTimeout(this.server.getTransaction(sendResult.hash), 5_000, 'getTransaction/poll');
     }
     
-    console.log("[SIGN_AND_SUBMIT] Final txResponse.status:", txResponse.status);
+    logger.debug({ txHash: sendResult.hash, status: txResponse.status }, 'Transaction confirmed');
     if (txResponse.status === 'FAILED') throw new Error(`Tx Failed on-chain`);
     
     return { txHash: sendResult.hash, txResponse };
@@ -225,6 +226,24 @@ export class StellarService {
     );
     const { txHash } = await this.signAndSubmit(xdrStr, this.oracleKeypair);
     return txHash;
+  }
+
+  async submitSigned(tx: ReturnType<typeof TransactionBuilder.fromXDR>): Promise<{ txHash: string }> {
+    let sendResult = await withTimeout(this.server.sendTransaction(tx as any), 10_000, 'sendTransaction/signed');
+    if (sendResult.status === 'ERROR') throw new Error('Tx submission failed');
+
+    let txResponse = await withTimeout(this.server.getTransaction(sendResult.hash), 5_000, 'getTransaction/signed');
+    let waitCount = 0;
+    const MAX_WAIT = 20;
+    while (txResponse.status === 'NOT_FOUND') {
+      if (waitCount >= MAX_WAIT) throw new Error(`Tx ${sendResult.hash} not confirmed after ${MAX_WAIT * 2}s`);
+      waitCount++;
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      txResponse = await withTimeout(this.server.getTransaction(sendResult.hash), 5_000, 'getTransaction/signed/poll');
+    }
+    if (txResponse.status === 'FAILED') throw new Error('Tx failed on-chain');
+    logger.info({ txHash: sendResult.hash }, 'Signed tx submitted and confirmed');
+    return { txHash: sendResult.hash };
   }
 
   async claimForUser(marketAddr: string, userAddr: string): Promise<{ txHash: string; payout: bigint }> {

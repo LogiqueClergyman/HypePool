@@ -196,6 +196,13 @@ export function confirmTx(interaction_id: string, tx_hash: string): Promise<{ st
   });
 }
 
+export function submitSignedTx(signed_xdr: string): Promise<{ tx_hash: string }> {
+  return req("/submit", {
+    method: "POST",
+    body: JSON.stringify({ signed_xdr }),
+  });
+}
+
 export function getFeed(page = 1, limit = 6): Promise<FeedResponse> {
   return req(`/feed?page=${page}&limit=${limit}`);
 }
@@ -219,6 +226,17 @@ export function getMarkets(params: {
     Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined).map(([k, v]) => [k, String(v)]))
   );
   return req(`/markets?${q}`);
+}
+
+export interface PlatformStats {
+  total_volume: string;
+  total_bettors: number;
+  active_markets: number;
+  total_markets: number;
+}
+
+export function getPlatformStats(): Promise<PlatformStats> {
+  return req('/markets/stats');
 }
 
 export function getUserPortfolio(address: string): Promise<Portfolio> {

@@ -301,12 +301,27 @@ function CreateMarketModal({ onClose, userAddress, onCreated }: { onClose: () =>
           {(step === "tiersLoaded" || step === "submitting" || step === "success") && tiers && (
             <>
               {tiers.title && (
-                <div className="p-3 bg-white/[0.02] border border-white/8">
-                  <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-0.5">VIDEO</p>
-                  <p className="text-xs font-bold text-white truncate">{tiers.title}</p>
-                  <p className="text-[9px] text-muted-foreground mt-0.5">
-                    {(tiers.current_views / 1_000_000).toFixed(1)}M views · {tiers.author}
-                  </p>
+                <div className="border border-white/8 overflow-hidden">
+                  {tiers.thumbnail && (
+                    <div className="relative w-full aspect-video bg-[#111] overflow-hidden">
+                      <img
+                        src={tiers.thumbnail}
+                        alt={tiers.title}
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                      <div className="absolute bottom-2 left-2 flex items-center gap-1.5">
+                        <span className="px-2 py-0.5 text-[8px] font-black tracking-widest bg-primary/90 text-black">
+                          {formatViews(tiers.current_views)} VIEWS
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                  <div className="p-3 bg-white/[0.02]">
+                    <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-0.5">VIDEO</p>
+                    <p className="text-xs font-bold text-white leading-snug">{tiers.title}</p>
+                    <p className="text-[9px] text-muted-foreground mt-0.5">{tiers.author}</p>
+                  </div>
                 </div>
               )}
 

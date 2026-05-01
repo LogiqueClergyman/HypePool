@@ -77,6 +77,29 @@ router.get('/', validateQuery(marketsQuerySchema), async (req: Request, res: Res
   }
 });
 
+router.get('/stats', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const [agg, activeCount] = await Promise.all([
+      prisma.market.aggregate({
+        _sum: { yesPool: true, noPool: true, totalBettors: true },
+        _count: { id: true },
+      }),
+      prisma.market.count({ where: { status: 'ACTIVE' } }),
+    ]);
+
+    const totalVolume = (agg._sum.yesPool ?? 0n) + (agg._sum.noPool ?? 0n);
+
+    return res.status(200).json({
+      total_volume: totalVolume.toString(),
+      total_bettors: agg._sum.totalBettors ?? 0,
+      active_markets: activeCount,
+      total_markets: agg._count.id ?? 0,
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const market = await prisma.market.findUnique({

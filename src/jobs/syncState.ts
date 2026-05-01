@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { getStellarService } from '../services/stellar';
+import { logger } from '../lib/logger';
 
 export async function syncState(): Promise<void> {
   try {
@@ -28,12 +29,11 @@ export async function syncState(): Promise<void> {
           }
         });
       } catch (e) {
-        console.error(`Failed to sync state for market ${market.id}`, e);
+        logger.error({ err: e, marketId: market.id }, 'Failed to sync state for market');
       }
-      // Small pause between RPC calls to avoid hammering the endpoint
       await new Promise(r => setTimeout(r, 500));
     }
   } catch (error) {
-    console.error('State sync job error:', error);
+    logger.error({ err: error }, 'State sync job error');
   }
 }

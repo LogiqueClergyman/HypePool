@@ -25,6 +25,7 @@ import feedRoutes from './routes/feed';
 import userRoutes from './routes/users';
 import walletRoutes from './routes/wallet';
 import confirmRoutes from './routes/confirm';
+import submitRoutes from './routes/submit';
 import demoRoutes from './routes/demo';
 
 const app = express();
@@ -89,6 +90,7 @@ app.use('/api/feed', feedRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/confirm', confirmRoutes);
+app.use('/api/submit', submitRoutes);
 if (process.env.NODE_ENV !== 'production') app.use('/api/demo', demoRoutes);
 
 app.use(errorHandler);
