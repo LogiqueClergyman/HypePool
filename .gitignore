@@ -38,5 +38,6 @@ Thumbs.db
 *.swp
 *.swo
 
+# ── Custom ────────────────────────────────────────────────────────────────────
 # Local docs
 STELLAR_GARAGE_SUBMISSION.md

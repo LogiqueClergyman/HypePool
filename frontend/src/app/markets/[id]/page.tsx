@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ArrowLeft, TrendingUp, TrendingDown, CheckCircle, Loader2, Zap } from "lucide-react";
+import { ArrowLeft, TrendingUp, TrendingDown, CheckCircle, Loader2, Zap, Trophy, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useWallet } from "@/contexts/WalletContext";
 import {
