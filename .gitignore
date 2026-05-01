@@ -37,3 +37,6 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Local docs
+STELLAR_GARAGE_SUBMISSION.md
