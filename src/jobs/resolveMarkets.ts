@@ -47,8 +47,12 @@ export async function resolveMarkets(): Promise<void> {
 
           market.status = `RESOLVED_${result.outcome.toUpperCase()}` as any;
           market.outcome = result.outcome.toUpperCase() as any;
-        } catch (e) {
-          logger.error({ err: e, marketId: market.id }, 'Failed to execute on-chain resolution');
+        } catch (e: any) {
+          if (e.message && e.message.includes('Error(Contract, #14)')) {
+            logger.debug({ marketId: market.id }, 'Resolution window not open yet on ledger, will retry');
+          } else {
+            logger.error({ err: e, marketId: market.id }, 'Failed to execute on-chain resolution');
+          }
           continue; // Retry on next cron loop
         }
       }

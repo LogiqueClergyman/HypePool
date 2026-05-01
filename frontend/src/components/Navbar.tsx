@@ -34,7 +34,7 @@ export default function Navbar() {
           : "bg-transparent py-7"
       )}
     >
-      <div className="max-w-7xl mx-auto px-6 lg:px-10">
+      <div className="max-w-[1600px] w-full mx-auto px-6 lg:px-12">
         <div className="flex items-center justify-between">
           {/* Logo */}
           <a href="/" className="flex items-center gap-3 group">
@@ -50,7 +50,7 @@ export default function Navbar() {
               href="https://x.com/hypepool0"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-2 text-muted-foreground hover:text-white transition-colors duration-200 text-xs font-black uppercase tracking-widest"
+              className="flex items-center gap-2 text-white/50 hover:text-white transition-colors duration-200 text-xs font-black uppercase tracking-widest"
             >
               <XIcon />
               <span>@hypepool0</span>
@@ -93,7 +93,7 @@ export default function Navbar() {
                 href="https://x.com/hypepool0"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-3 text-xs font-black tracking-widest text-muted-foreground hover:text-white transition-colors"
+                className="flex items-center gap-3 text-xs font-black tracking-widest text-white/50 hover:text-white transition-colors"
                 onClick={() => setMobileOpen(false)}
               >
                 <XIcon /> @hypepool0

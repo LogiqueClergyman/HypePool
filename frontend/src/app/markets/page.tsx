@@ -6,151 +6,185 @@ import { useState, useEffect, useCallback } from "react";
 import { useWallet } from "@/contexts/WalletContext";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plus, X, Clock, Users, ChevronRight, Zap, Loader2,
+  Plus, X, Zap, Loader2,
   AlertCircle, CheckCircle, Link as LinkIcon, Wallet, ArrowRight,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   getFeed, getContentTiers, submitContent,
-  formatViews, formatDeadline, computePercent,
+  formatViews, computePercent, stroopsToXlm, formatDeadline,
   type FeedItem, type TiersResponse,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import Navbar from "@/components/Navbar";
-
-// ── Market Row (inside a content card) ───────────────────────────────────────
-
-function MarketRow({ market, index }: { market: FeedItem["markets"][number]; index: number }) {
-  const yes = Number(market.yes_pool);
-  const no = Number(market.no_pool);
-  const hasLiquidity = yes + no > 0;
-  const yesPct = hasLiquidity ? computePercent(yes, no) : 0;
-  const noPct = hasLiquidity ? 100 - yesPct : 0;
-  const totalXlm = ((yes + no) / 10_000_000).toFixed(0);
-  const isActive = market.status === "ACTIVE";
-
-  return (
-    <Link
-      href={`/markets/${market.id}`}
-      className={cn(
-        "flex items-center gap-3 px-4 py-3 border-t border-white/5 hover:bg-white/[0.03] transition-colors group/row",
-        !isActive && "opacity-50"
-      )}
-    >
-      {/* Threshold + window */}
-      <div className="w-28 shrink-0">
-        <p className="text-[10px] font-black text-white tracking-tight">
-          {formatViews(market.threshold)}
-        </p>
-        <p className="text-[8px] font-bold text-muted-foreground tracking-widest mt-0.5">
-          {market.window_hours}H WINDOW
-        </p>
-      </div>
-
-      {/* Pool bars */}
-      <div className="flex-1 space-y-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-[8px] font-black text-primary w-6 shrink-0">{yesPct}%</span>
-          <div className="flex-1 h-1.5 bg-white/5">
-            <div className="h-full bg-primary transition-all" style={{ width: `${yesPct}%` }} />
-          </div>
-          <span className="text-[8px] font-black text-muted-foreground w-6 text-right shrink-0">{noPct}%</span>
-        </div>
-      </div>
-
-      {/* Volume + time */}
-      <div className="text-right shrink-0 hidden sm:block">
-        <p className="text-[9px] font-black text-white italic">{parseInt(totalXlm).toLocaleString()} XLM</p>
-        {isActive && (
-          <p className="text-[8px] font-bold text-muted-foreground flex items-center gap-1 justify-end mt-0.5">
-            <Clock className="w-2.5 h-2.5" />
-            {formatDeadline(market.deadline)}
-          </p>
-        )}
-        {!isActive && (
-          <p className="text-[8px] font-black text-muted-foreground tracking-widest mt-0.5">
-            {market.status.replace("_", " ")}
-          </p>
-        )}
-      </div>
-
-      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground group-hover/row:text-primary transition-colors shrink-0" />
-    </Link>
-  );
-}
-
-// ── Content Card ─────────────────────────────────────────────────────────────
-
-function ContentCard({ item, index }: { item: FeedItem; index: number }) {
+function FeaturedContentCard({ item, index }: { item: FeedItem; index: number }) {
   const { content, markets, total_volume, total_bettors } = item;
-  const totalXlm = (Number(total_volume) / 10_000_000).toFixed(0);
-  const activeCount = markets.filter(m => m.status === "ACTIVE").length;
+  const primaryMarket = markets.find(m => m.status === "ACTIVE") ?? markets[0];
+  const percent = primaryMarket ? computePercent(primaryMarket.yes_pool, primaryMarket.no_pool) : 0;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay: index * 0.05 }}
-      className="bg-[#0D0D0D] border border-white/8 hover:border-primary/30 transition-all overflow-hidden"
+      className="h-full"
     >
-      {/* Thumbnail — shown ONCE for the video */}
-      <div className="relative w-full aspect-video bg-[#111] overflow-hidden">
-        {content.thumbnail ? (
-          <img
-            src={content.thumbnail}
-            alt={content.title}
-            className="w-full h-full object-cover opacity-80"
-          />
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary/5 to-transparent">
-            <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center">
-              <div className="w-0 h-0 border-t-[7px] border-b-[7px] border-l-[12px] border-t-transparent border-b-transparent border-l-white/50 ml-1" />
+      <Link
+        href={primaryMarket ? `/markets/${primaryMarket.id}` : "#"}
+        className="group flex flex-col md:flex-row bg-[#0D0D0D] border border-primary/50 hover:border-primary transition-all overflow-hidden h-full shadow-[0_0_15px_rgba(0,255,128,0.1)] hover:shadow-[0_0_20px_rgba(0,255,128,0.2)] rounded-sm relative"
+      >
+        <div className="p-6 md:p-8 flex flex-col flex-1 order-2 md:order-1 relative z-10 w-full md:w-[60%]">
+          <div className="flex items-center gap-2 mb-6">
+            <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+            <span className="text-[10px] font-black text-primary uppercase tracking-widest">
+              FEATURED MARKET
+            </span>
+          </div>
+          
+          <h2 className="text-2xl md:text-3xl font-black text-white uppercase italic tracking-tighter leading-[1.1] mb-8 line-clamp-3 group-hover:textShadow-[0_0_15px_rgba(255,255,255,0.3)] transition-all">
+            WILL [{content.title}] HIT {formatViews(primaryMarket?.threshold || 0)} VIEWS IN {primaryMarket?.window_hours}H?
+          </h2>
+
+          <div className="space-y-4 mb-8 pr-4">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-[10px] font-black uppercase">
+                <div className="flex items-center gap-2">
+                  <span className="text-white">YES</span>
+                  <span className="px-2 py-0.5 text-[8px] bg-primary/20 border border-primary/40 text-primary rounded-sm tracking-widest">LIVE MARKET</span>
+                </div>
+                <span className="text-primary">{percent}%</span>
+              </div>
+              <div className="h-1.5 w-full bg-white/10 flex rounded-full overflow-hidden">
+                <div className="h-full bg-primary shadow-[0_0_10px_rgba(0,255,128,0.5)]" style={{ width: `${percent}%` }} />
+              </div>
+            </div>
+            
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-[10px] font-black uppercase">
+                <span className="text-white">NO</span>
+                <span className="text-white/60">{100 - percent}%</span>
+              </div>
+              <div className="h-1.5 w-full bg-white/10 flex rounded-full overflow-hidden">
+                <div className="h-full bg-white/30" style={{ width: `${100 - percent}%` }} />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 mt-auto mb-4">
+            <div>
+              <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-1">VOLUME</p>
+              <p className="text-sm font-black text-white">{stroopsToXlm(total_volume)} XLM</p>
+            </div>
+            <div>
+              <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest mb-1">BETTORS</p>
+              <p className="text-sm font-black text-white">{total_bettors}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="relative w-full md:w-[40%] aspect-video md:aspect-auto order-1 md:order-2 bg-[#111]">
+          {content.thumbnail ? (
+            <img src={content.thumbnail} alt={content.title} className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity" />
+          ) : (
+             <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary/5 to-transparent" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-r from-[#0D0D0D] via-transparent to-transparent hidden md:block" />
+          <div className="absolute inset-0 bg-gradient-to-t from-[#0D0D0D] via-transparent to-transparent md:hidden" />
+          <div className="absolute bottom-6 right-6 hidden md:block z-20">
+            <button className="px-6 py-3 bg-primary text-black font-black uppercase tracking-widest text-[10px] hover:bg-white transition-colors flex items-center gap-2">
+              BET NOW <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="md:hidden w-full order-3 border-t border-primary p-4">
+            <button className="w-full py-3 bg-primary text-black font-black uppercase tracking-widest text-[10px] hover:bg-white transition-colors flex items-center justify-center gap-2">
+              BET NOW <ArrowRight className="w-3 h-3" />
+            </button>
+        </div>
+        
+        {/* Full width bottom highlight bar to match design */}
+        <div className="hidden md:block absolute bottom-0 left-0 right-0 h-1 bg-primary group-hover:h-1.5 transition-all" />
+      </Link>
+    </motion.div>
+  );
+}
+
+function ContentCard({ item, index }: { item: FeedItem; index: number }) {
+  const { content, markets, total_volume } = item;
+  const primaryMarket = markets.find(m => m.status === "ACTIVE") ?? markets[0];
+  const activeCount = markets.filter(m => m.status === "ACTIVE").length;
+  const percent = primaryMarket ? computePercent(primaryMarket.yes_pool, primaryMarket.no_pool) : 0;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, delay: index * 0.05 }}
+      className="h-full"
+    >
+      <Link
+        href={primaryMarket ? `/markets/${primaryMarket.id}` : "#"}
+        className="group flex flex-col bg-[#0D0D0D] border border-white/10 hover:border-primary/50 transition-all overflow-hidden h-full rounded-sm"
+      >
+        <div className="relative w-full aspect-[16/10] bg-[#111]">
+          {content.thumbnail ? (
+            <img src={content.thumbnail} alt={content.title} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+          ) : (
+             <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary/5 to-transparent" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+          <div className="absolute bottom-2 right-2">
+            <span className="px-2 py-0.5 text-[9px] font-black tracking-widest bg-black/60 backdrop-blur-md text-white border border-white/10">
+              {formatViews(content.current_views)} VIEWS
+            </span>
+          </div>
+        </div>
+
+        <div className="p-4 flex flex-col flex-1 border-b border-white/5">
+          <p className="text-[9px] font-black text-white/50 uppercase tracking-widest mb-1.5 line-clamp-1">
+            {content.channel || "YOUTUBE"}
+          </p>
+          <div className="flex justify-between items-start gap-2 mb-2">
+            <h3 className="text-sm font-black text-white uppercase italic tracking-tight leading-snug line-clamp-2 group-hover:text-primary transition-colors">
+              {content.title}
+            </h3>
+            {activeCount > 0 && (
+              <span className="shrink-0 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-widest bg-primary/10 text-primary border border-primary/20 rounded-sm">
+                LIVE
+              </span>
+            )}
+          </div>
+        </div>
+        
+        {primaryMarket && (
+          <div className="px-4 py-3 bg-white/[0.02]">
+            <div className="flex justify-between items-center mb-3">
+               <div>
+                  <p className="text-[10px] font-black text-white">{formatViews(primaryMarket.threshold)}</p>
+                  <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-widest mt-0.5">{primaryMarket.window_hours}H WINDOW</p>
+                </div>
+                <div className="flex-1 px-4">
+                  <div className="flex items-center justify-between text-[9px] font-black mb-1">
+                    <span className="text-primary">{percent}%</span>
+                    <span className="text-white/40">{100 - percent}%</span>
+                  </div>
+                  <div className="h-1 w-full bg-white/10 overflow-hidden flex rounded-full">
+                    <div className="h-full bg-primary" style={{ width: `${percent}%` }} />
+                    <div className="h-full bg-white/20" style={{ width: `${100 - percent}%` }} />
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] font-black text-white">{stroopsToXlm(total_volume)} XLM</p>
+                  <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-widest flex items-center gap-1 justify-end mt-0.5">
+                    <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    {formatDeadline(primaryMarket.deadline)}
+                  </p>
+                </div>
             </div>
           </div>
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-
-        {/* Active badge */}
-        {activeCount > 0 && (
-          <div className="absolute top-2 left-2">
-            <span className="px-2 py-0.5 text-[8px] font-black uppercase tracking-widest bg-primary/90 text-black">
-              {activeCount} ACTIVE
-            </span>
-          </div>
-        )}
-
-        {/* Current views */}
-        <div className="absolute bottom-2 right-2">
-          <span className="px-2 py-0.5 text-[8px] font-black tracking-widest bg-black/70 text-white border border-white/10">
-            {formatViews(content.current_views)} VIEWS
-          </span>
-        </div>
-      </div>
-
-      {/* Content info — shown ONCE */}
-      <div className="px-4 py-3 border-b border-white/5">
-        <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-1">
-          {content.channel || "YOUTUBE"}
-        </p>
-        <h3 className="text-[11px] font-black text-white uppercase italic tracking-tight leading-snug line-clamp-2">
-          {content.title}
-        </h3>
-        <div className="flex items-center gap-4 mt-2">
-          <div className="flex items-center gap-1.5">
-            <Users className="w-3 h-3 text-muted-foreground" />
-            <span className="text-[9px] font-black text-muted-foreground">{total_bettors} bettors</span>
-          </div>
-          <span className="text-[9px] font-black text-white italic">{parseInt(totalXlm).toLocaleString()} XLM total</span>
-        </div>
-      </div>
-
-      {/* Markets — one row per market */}
-      <div>
-        {markets.map((market, i) => (
-          <MarketRow key={market.id} market={market} index={i} />
-        ))}
-      </div>
+      </Link>
     </motion.div>
   );
 }
@@ -453,75 +487,8 @@ export default function MarketsPage() {
 
   return (
     <div className="min-h-screen bg-black">
-      <Navbar />
-
-      {/* Header */}
-      <div className="pt-32 pb-12 border-b border-white/5">
-        <div className="max-w-7xl mx-auto px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-end justify-between gap-8">
-            <div>
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-[9px] font-black text-primary uppercase tracking-[0.4em] mb-3"
-              >
-                PREDICTION FEED
-              </motion.p>
-              <motion.h1
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="text-5xl font-black text-white uppercase italic tracking-tighter"
-              >
-                ALL <span className="text-primary">MARKETS</span>
-              </motion.h1>
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.2 }}
-                className="text-sm text-muted-foreground mt-2 font-medium"
-              >
-                Each video grouped with all its prediction markets
-              </motion.p>
-            </div>
-
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.15 }}
-              className="flex items-center gap-3 shrink-0"
-            >
-              {connected && address ? (
-                <div className="hidden sm:flex items-center gap-2 px-3 py-2 border border-white/10 bg-white/[0.02]">
-                  <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                  <span className="text-[10px] font-black text-white tracking-widest">
-                    {address.slice(0, 4)}…{address.slice(-4)}
-                  </span>
-                </div>
-              ) : (
-                <button
-                  onClick={connect}
-                  disabled={connecting}
-                  className="flex items-center gap-2 px-5 py-4 border border-white/10 text-white text-xs font-black uppercase tracking-widest hover:border-primary hover:text-primary transition-all disabled:opacity-50"
-                >
-                  <Wallet className="w-3.5 h-3.5" />
-                  {connecting ? "CONNECTING…" : "CONNECT WALLET"}
-                </button>
-              )}
-              <button
-                onClick={() => setShowModal(true)}
-                className="flex items-center gap-3 px-8 py-4 bg-primary text-black font-black uppercase text-xs tracking-widest hover:bg-white transition-all neon-glow"
-              >
-                <Plus className="w-4 h-4" />
-                CREATE MARKET
-              </button>
-            </motion.div>
-          </div>
-        </div>
-      </div>
-
       {/* Feed */}
-      <div className="max-w-7xl mx-auto px-6 lg:px-8 py-12">
+      <div className="max-w-[1600px] w-full mx-auto px-6 lg:px-12 pt-32 pb-12">
         {loading && items.length === 0 ? (
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {[...Array(6)].map((_, i) => (
@@ -551,10 +518,29 @@ export default function MarketsPage() {
           </div>
         ) : (
           <>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-              {items.map((item, i) => (
-                <ContentCard key={item.content.id} item={item} index={i} />
-              ))}
+            <div className="flex justify-end mb-6">
+              <button
+                onClick={() => setShowModal(true)}
+                className="flex items-center gap-2 px-5 py-2.5 border border-primary/40 bg-primary/5 text-primary text-[10px] font-black uppercase tracking-widest hover:bg-primary hover:text-black hover:border-primary transition-all rounded"
+              >
+                <Plus className="w-3.5 h-3.5" /> CREATE NEW MARKET
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              {items.map((item, i) => {
+                if (i === 0) {
+                  return (
+                    <div key={item.content.id} className="md:col-span-2">
+                      <FeaturedContentCard item={item} index={i} />
+                    </div>
+                  );
+                }
+                return (
+                  <div key={item.content.id} className="h-full">
+                    <ContentCard item={item} index={i} />
+                  </div>
+                );
+              })}
             </div>
 
             {hasMore && (

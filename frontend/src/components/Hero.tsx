@@ -14,7 +14,8 @@ function Counter({ to, suffix = "" }: { to: number; suffix?: string }) {
   const val = useMotionValue(0);
   const display = useTransform(val, (v) => {
     if (to >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M${suffix}`;
-    if (to >= 1_000) return `${(v / 1_000).toFixed(0)}K${suffix}`;
+    if (to >= 1_000) return `${(v / 1_000).toFixed(1)}K${suffix}`;
+    if (to % 1 !== 0) return `${v.toFixed(1)}${suffix}`;
     return `${Math.round(v)}${suffix}`;
   });
   const ref = useRef(null);
@@ -194,9 +195,7 @@ function LiveCard({ market }: { market: FeaturedMarket | null }) {
           <div className="flex items-center gap-4">
             <div>
               <p className="text-[7px] font-black text-muted-foreground uppercase tracking-widest">VOLUME</p>
-              <p className="text-xs font-black text-white italic">
-                {totalXlm >= 1000 ? `${(totalXlm / 1000).toFixed(0)}K` : totalXlm.toFixed(0)} XLM
-              </p>
+              <p className="text-xs font-black text-white italic">{totalXlm.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM</p>
             </div>
             <div className="flex items-center gap-1.5">
               <Users className="w-3 h-3 text-muted-foreground" />
@@ -234,7 +233,7 @@ function LiveCard({ market }: { market: FeaturedMarket | null }) {
         <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse block" />
         <span className="text-[8px] font-black text-muted-foreground tracking-widest">POOL</span>
         <span className="text-[10px] font-black text-white">
-          {totalXlm >= 1000 ? `${(totalXlm / 1000).toFixed(1)}K` : totalXlm.toFixed(0)} XLM
+          {totalXlm.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM
         </span>
       </motion.div>
     </motion.div>
@@ -252,6 +251,63 @@ function FadeUp({ children, delay = 0, className = "" }: { children: React.React
     >
       {children}
     </motion.div>
+  );
+}
+
+/* ── Tech Background ──────────────────────────────── */
+function TechBackground() {
+  return (
+    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+      {/* Moving Grid */}
+      <div className="absolute inset-0 opacity-[0.03]">
+        <motion.div
+          animate={{ y: [0, 80] }}
+          transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+          className="absolute inset-[-50%] w-[200%] h-[200%]"
+          style={{
+            backgroundImage: "linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)",
+            backgroundSize: "80px 80px",
+          }}
+        />
+        {/* Vignette mask to fade grid edges */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_0%,black_80%)]" />
+      </div>
+
+      {/* Blueprint Crosshairs */}
+      <div className="absolute inset-0 opacity-[0.15]">
+        {[
+          { left: "20%", top: "30%" },
+          { left: "75%", top: "20%" },
+          { left: "45%", top: "60%" },
+          { left: "80%", top: "75%" },
+          { left: "30%", top: "80%" },
+          { left: "60%", top: "40%" },
+        ].map((pos, i) => (
+          <motion.div
+            key={i}
+            className="absolute text-primary text-[10px] font-mono leading-none"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0, 1, 0] }}
+            transition={{
+              duration: 4,
+              delay: i * 0.7,
+              repeat: Infinity,
+              ease: "easeInOut",
+            }}
+            style={{
+              left: pos.left,
+              top: pos.top,
+            }}
+          >
+            +
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Subtle Glowing Orbs */}
+      <div className="animate-orb-drift absolute top-[15%] right-[10%] w-[480px] h-[480px] rounded-full bg-primary/[0.04] blur-[100px]" />
+      <div className="animate-orb-drift-2 absolute bottom-[10%] left-[5%] w-[360px] h-[360px] rounded-full bg-[#6B6FE8]/[0.05] blur-[90px]" />
+    </div>
   );
 }
 
@@ -279,24 +335,13 @@ export default function Hero() {
       .catch(() => {});
   }, []);
 
-  const totalVolXlm = stats ? Math.floor(Number(stats.total_volume) / 10_000_000) : 0;
+  const totalVolXlm = stats ? parseFloat(stroopsToXlm(stats.total_volume)) : 0;
 
   return (
     <>
       <section className="relative min-h-screen flex flex-col justify-center pt-28 pb-10 overflow-hidden bg-black">
-        {/* Background orbs */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <div className="animate-orb-drift absolute top-[15%] right-[10%] w-[480px] h-[480px] rounded-full bg-primary/[0.04] blur-[100px]" />
-          <div className="animate-orb-drift-2 absolute bottom-[10%] left-[5%] w-[360px] h-[360px] rounded-full bg-[#6B6FE8]/[0.05] blur-[90px]" />
-          <div className="absolute top-[40%] left-[40%] w-[200px] h-[200px] rounded-full bg-primary/[0.025] blur-[60px]" />
-          <div
-            className="absolute inset-0 opacity-[0.02]"
-            style={{
-              backgroundImage: "linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)",
-              backgroundSize: "80px 80px",
-            }}
-          />
-        </div>
+        {/* Animated Tech Background */}
+        <TechBackground />
 
         <div className="relative z-10 max-w-7xl mx-auto px-6 lg:px-10 w-full">
           <div className="grid lg:grid-cols-2 gap-16 xl:gap-24 items-center">
@@ -310,19 +355,39 @@ export default function Hero() {
               </FadeUp>
 
               <FadeUp delay={0.2}>
-                <h1 className="text-[clamp(4.5rem,10vw,7.5rem)] font-black leading-[0.82] tracking-tighter text-white uppercase italic mb-8">
+                <h1 className="text-[clamp(4.5rem,10vw,7.5rem)] font-black leading-[0.82] tracking-tighter text-white uppercase italic mb-8 relative">
                   BET ON
                   <br />
-                  <span className="text-primary">VIRAL</span>
+                  <motion.span
+                    animate={{
+                      textShadow: [
+                        "0 0 20px rgba(0,255,128,0.5)",
+                        "3px 0 0px rgba(255,0,0,0.8), -3px 0 0px rgba(0,255,255,0.8)",
+                        "-3px 0 0px rgba(255,0,0,0.8), 3px 0 0px rgba(0,255,255,0.8)",
+                        "0 0 20px rgba(0,255,128,0.5)",
+                        "0 0 20px rgba(0,255,128,0.5)",
+                      ],
+                      x: [0, -4, 4, 0, 0],
+                    }}
+                    transition={{ duration: 4, repeat: Infinity, times: [0, 0.02, 0.04, 0.06, 1] }}
+                    className="text-primary inline-block"
+                  >
+                    VIRAL
+                  </motion.span>
                   <br />
                   CONTENT.
                 </h1>
               </FadeUp>
 
               <FadeUp delay={0.32}>
-                <p className="text-base text-muted-foreground mb-10 max-w-[380px] leading-relaxed">
-                  Paste a YouTube URL. Predict if it hits a view milestone. Win XLM if you're right — settled automatically on Stellar Soroban.
-                </p>
+                <div className="border-l-2 border-primary pl-4 mb-10 max-w-[420px]">
+                  <p className="text-xs sm:text-sm font-black text-white/80 uppercase tracking-widest leading-relaxed">
+                    PREDICT YOUTUBE VIEW MILESTONES. STAKE XLM. WIN IF YOU'RE RIGHT.
+                  </p>
+                  <p className="text-xs sm:text-sm font-black text-primary uppercase tracking-widest mt-1">
+                    100% DECENTRALIZED ON SOROBAN.
+                  </p>
+                </div>
               </FadeUp>
 
               <FadeUp delay={0.42}>

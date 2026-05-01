@@ -11,6 +11,7 @@ frontend/out/
 *.tsbuildinfo
 frontend/*.tsbuildinfo
 frontend/src/**/*.tsbuildinfo
+frontend/next-env.d.ts
 
 # ── Environment ───────────────────────────────────────────────────────────────
 .env
@@ -36,3 +37,7 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# ── Custom ────────────────────────────────────────────────────────────────────
+# Local docs
+STELLAR_GARAGE_SUBMISSION.md

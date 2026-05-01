@@ -84,15 +84,15 @@ export default function Platforms() {
   return (
     <section className="py-20 px-6 lg:px-8 border-t border-white/5">
       <div className="max-w-5xl mx-auto">
-        <div className="text-center mb-12">
+        <div className="text-center mb-12 flex flex-col items-center">
           <p className="text-[9px] font-black text-primary tracking-[0.4em] uppercase mb-3">
-            SUPPORTED PLATFORMS
+            THE MULTIVERSE OF ATTENTION
           </p>
-          <h2 className="text-2xl sm:text-3xl font-black text-white uppercase italic tracking-tight">
+          <h2 className="text-2xl sm:text-3xl font-black text-white uppercase italic tracking-tight mb-4">
             BET ON ANY PLATFORM
           </h2>
-          <p className="text-sm text-muted-foreground mt-3 max-w-md mx-auto">
-            YouTube is live today. More platforms are on the way — bet on viral moments across every major network.
+          <p className="text-xs sm:text-sm font-black text-white/70 uppercase tracking-widest max-w-lg mx-auto">
+            YOUTUBE IS LIVE. TIKTOK, X, AND TWITCH ARE INCOMING. THE ENTIRE ATTENTION ECONOMY WILL BE TOKENIZED.
           </p>
         </div>
 

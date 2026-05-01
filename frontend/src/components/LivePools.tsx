@@ -135,7 +135,9 @@ function PoolCard({ pool, index }: { pool: Pool; index: number }) {
           <div className="flex items-center gap-4">
             <div>
               <p className="text-[7px] font-black text-muted-foreground uppercase tracking-widest">VOLUME</p>
-              <p className="text-xs font-black text-white italic">{(pool.totalStaked / 1000).toFixed(0)}K XLM</p>
+              <p className="text-xs font-black text-white italic">
+                {pool.totalStaked.toLocaleString(undefined, { maximumFractionDigits: 2 })} XLM
+              </p>
             </div>
             <div className="flex items-center gap-1.5">
               <Users className="w-3 h-3 text-muted-foreground" />
@@ -180,12 +182,13 @@ export default function LivePools() {
             const no = Number(m.no_pool);
             const total = yes + no;
             const yesPct = total > 0 ? computePercent(m.yes_pool, m.no_pool) : 0;
+            const totalXlm = Number(stroopsToXlm(total));
             return {
               id: m.id,
               title: `WILL "${item.content.title.slice(0, 40).toUpperCase()}" REACH ${formatViews(m.threshold)} VIEWS?`,
               thumbnail: item.content.thumbnail || "",
               timeLeft: formatDeadline(m.deadline),
-              totalStaked: total,
+              totalStaked: totalXlm,
               yesPercent: yesPct,
               bettors: item.total_bettors,
               tag: "VIRAL",
