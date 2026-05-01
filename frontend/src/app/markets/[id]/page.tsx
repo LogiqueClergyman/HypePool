@@ -5,12 +5,8 @@ export const dynamic = "force-dynamic";
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import {
-  ArrowLeft, TrendingUp, TrendingDown,
-  CheckCircle, XCircle, Loader2, Trophy, Zap,
-} from "lucide-react";
+import { ArrowLeft, TrendingUp, TrendingDown, CheckCircle, Loader2, Zap } from "lucide-react";
 import Link from "next/link";
-import Navbar from "@/components/Navbar";
 import { useWallet } from "@/contexts/WalletContext";
 import {
   getMarket, getMarketBets, placeBet, confirmTx, submitSignedTx,
@@ -19,30 +15,40 @@ import {
   type MarketDetail, type MarketBet, type TiersResponse,
 } from "@/lib/api";
 
-// ── Donut Chart ───────────────────────────────────────────────────────────────
+type UiError = { message: string; detail?: string };
 
-function DonutChart({ yesPct }: { yesPct: number }) {
-  const r = 54;
-  const circ = 2 * Math.PI * r;
-  const yesDash = (yesPct / 100) * circ;
-  const noDash = circ - yesDash;
-  return (
-    <svg viewBox="0 0 120 120" className="w-full h-full">
-      <circle cx="60" cy="60" r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="12" />
-      <motion.circle
-        cx="60" cy="60" r={r}
-        fill="none" stroke="#00FF85" strokeWidth="12" strokeLinecap="butt"
-        strokeDasharray={`${yesDash} ${noDash}`}
-        strokeDashoffset={circ / 4}
-        initial={{ strokeDasharray: `0 ${circ}` }}
-        animate={{ strokeDasharray: `${yesDash} ${noDash}` }}
-        transition={{ duration: 1.2, ease: "easeOut" }}
-      />
-      <text x="60" y="54" textAnchor="middle" fill="white" fontSize="18" fontWeight="900" fontStyle="italic">{yesPct}%</text>
-      <text x="60" y="70" textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize="7" fontWeight="700" letterSpacing="3">YES</text>
-    </svg>
-  );
+function formatUiError(error: unknown, fallback: string): UiError {
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  const msg = raw.trim();
+  const lowered = msg.toLowerCase();
+
+  if (!msg) return { message: fallback };
+  if (lowered.includes("market_closed") || lowered.includes("betting window has closed")) {
+    return { message: "Betting window has closed for this market." };
+  }
+  if (lowered.includes("below_min_bet") || lowered.includes("minimum bet")) {
+    return { message: "Bet amount is below the market minimum." };
+  }
+  if (lowered.includes("insufficient") || lowered.includes("balance")) {
+    return { message: "Insufficient balance to place this bet." };
+  }
+  if (lowered.includes("simulation failed") || lowered.includes("hosterror") || lowered.includes("invalidaction")) {
+    return {
+      message: "Transaction simulation failed. Try a smaller amount or retry in a moment.",
+      detail: msg,
+    };
+  }
+  if (lowered.includes("fetch failed") || lowered.includes("networkerror") || lowered.includes("network error")) {
+    return { message: "Network error while placing bet. Check API/server connection." };
+  }
+
+  if (msg.length > 220) {
+    return { message: fallback, detail: msg };
+  }
+  return { message: msg };
 }
+
+// ── Donut Chart ───────────────────────────────────────────────────────────────
 
 // ── Odds Bar ──────────────────────────────────────────────────────────────────
 
@@ -80,43 +86,6 @@ function OddsBar({ yesPct, noPct, yesXlm, noXlm }: { yesPct: number; noPct: numb
         </div>
       </div>
     </div>
-  );
-}
-
-// ── Bet Row ───────────────────────────────────────────────────────────────────
-
-function BetRow({ bet, outcome, index }: { bet: MarketBet; outcome: string | null; index: number }) {
-  const isYes = bet.side === "YES";
-  const won = outcome ? bet.side === outcome : null;
-  const xlm = parseFloat(stroopsToXlm(bet.amount));
-  const payoutXlm = bet.payout ? parseFloat(stroopsToXlm(bet.payout)) : null;
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: -10 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.04 }}
-      className="flex items-center justify-between py-3 border-b border-white/5 last:border-0"
-    >
-      <div className="flex items-center gap-3">
-        {won === true && <CheckCircle className="w-3.5 h-3.5 text-primary shrink-0" />}
-        {won === false && <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />}
-        {won === null && <div className="w-3.5 h-3.5 rounded-full border border-white/20 shrink-0" />}
-        <span className={`text-[9px] font-black tracking-widest px-2 py-0.5 ${isYes ? "bg-primary/15 text-primary" : "bg-white/8 text-white/60"}`}>
-          {bet.side}
-        </span>
-        <p className="hidden sm:block text-[9px] font-mono text-muted-foreground">
-          {bet.user_address.slice(0, 6)}…{bet.user_address.slice(-4)}
-        </p>
-      </div>
-      <div className="text-right">
-        <p className="text-xs font-black text-white italic">{xlm.toFixed(2)} XLM</p>
-        {payoutXlm && won && <p className="text-[9px] font-black text-primary">+{payoutXlm.toFixed(2)} XLM</p>}
-        {won === false && <p className="text-[9px] font-black text-red-400">LOST</p>}
-        <p className="text-[8px] text-muted-foreground/50">
-          {new Date(bet.placed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-        </p>
-      </div>
-    </motion.div>
   );
 }
 
@@ -217,21 +186,18 @@ function VideoMarketCreateBox({
   };
 
   return (
-    <div className="bg-[#0D0D0D] border border-white/8 p-4 space-y-3">
-      <p className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.3em]">
-        CREATE ANOTHER MARKET
-      </p>
+    <div className="bg-[#0D0D0D] border border-white/10 rounded-xl p-6 space-y-4">
       {loading && <p className="text-[10px] text-muted-foreground">Loading options...</p>}
       {!loading && tiersData && (
-        <>
+        <div className="space-y-4">
           <div>
-            <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-1.5">Tier</p>
-            <div className="flex flex-wrap gap-1.5">
+            <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-2">Select Tier</p>
+            <div className="flex flex-wrap gap-2">
               {tiersData.available_tiers.map((t) => (
                 <button
                   key={t}
                   onClick={() => setSelectedTier(t)}
-                  className={`px-2.5 py-1 text-[8px] font-black uppercase tracking-widest border ${
+                  className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest border rounded-md transition-all ${
                     selectedTier === t
                       ? "border-primary bg-primary/10 text-primary"
                       : "border-white/10 text-muted-foreground hover:text-white hover:border-white/30"
@@ -243,13 +209,13 @@ function VideoMarketCreateBox({
             </div>
           </div>
           <div>
-            <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-1.5">Window</p>
-            <div className="flex gap-1.5">
+            <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-2">Select Window</p>
+            <div className="flex gap-2">
               {tiersData.available_windows.map((w) => (
                 <button
                   key={w}
                   onClick={() => setSelectedWindow(w)}
-                  className={`px-2.5 py-1 text-[8px] font-black uppercase tracking-widest border ${
+                  className={`px-3 py-1.5 text-[9px] font-black uppercase tracking-widest border rounded-md transition-all ${
                     selectedWindow === w
                       ? "border-white text-white bg-white/10"
                       : "border-white/10 text-muted-foreground hover:text-white hover:border-white/30"
@@ -262,16 +228,16 @@ function VideoMarketCreateBox({
           </div>
 
           {!!existingForSelection && (
-            <p className="text-[9px] text-yellow-400 font-bold">
-              This tier + window already exists for this video.
-            </p>
+             <p className="text-[9px] text-yellow-400 font-bold">
+               This tier + window already exists.
+             </p>
           )}
 
           {!userAddress ? (
             <button
               onClick={connect}
               disabled={connecting}
-              className="w-full py-2.5 border border-white/15 text-[9px] font-black uppercase tracking-widest text-white hover:border-primary hover:text-primary disabled:opacity-50"
+              className="w-full py-4 border border-white/20 rounded-lg text-xs font-black uppercase tracking-widest text-white hover:border-primary hover:text-primary transition-all disabled:opacity-50"
             >
               {connecting ? "CONNECTING..." : "CONNECT WALLET"}
             </button>
@@ -279,12 +245,22 @@ function VideoMarketCreateBox({
             <button
               onClick={handleCreate}
               disabled={submitting || !selectedTier || !!existingForSelection}
-              className="w-full py-2.5 bg-primary text-black text-[9px] font-black uppercase tracking-widest hover:bg-white disabled:opacity-50"
+              className="w-full py-4 border border-primary rounded-lg text-primary text-xs font-black uppercase tracking-widest hover:bg-primary/10 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:border-white/10 disabled:text-muted-foreground"
             >
-              {submitting ? "CREATING..." : "CREATE MARKET"}
+              {submitting ? (
+                "CREATING..."
+              ) : (
+                <>
+                  <div className="w-4 h-4 rounded-full border border-current flex items-center justify-center shrink-0">
+                    <div className="w-2 h-0.5 bg-current absolute" />
+                    <div className="h-2 w-0.5 bg-current absolute" />
+                  </div>
+                  CREATE NEW MARKET
+                </>
+              )}
             </button>
           )}
-        </>
+        </div>
       )}
       {message && <p className="text-[9px] text-primary font-bold">{message}</p>}
       {error && <p className="text-[9px] text-red-400 font-bold">{error}</p>}
@@ -311,21 +287,21 @@ function RelatedMarketRow({
     <button
       type="button"
       onClick={() => onSelect(market.id)}
-      className={`flex items-center justify-between px-3 py-2 border-b border-white/5 last:border-0 hover:bg-white/[0.03] ${
-        isCurrent ? "bg-primary/10" : ""
+      className={`w-full flex items-center justify-between px-4 py-3 border border-white/10 rounded-lg hover:border-white/30 transition-all ${
+        isCurrent ? "bg-primary/5 border-primary/30" : "bg-black/20"
       }`}
     >
-      <div>
-        <p className="text-[10px] font-black text-white">
+      <div className="text-left">
+        <p className="text-sm font-medium text-white mb-1">
           {formatViews(market.threshold)} · {market.window_hours}H
         </p>
-        <p className="text-[8px] text-muted-foreground font-bold">
+        <p className="text-xs text-muted-foreground">
           {active ? formatDeadline(market.deadline) : market.status.replace("_", " ")}
         </p>
       </div>
       <div className="text-right">
-        <p className="text-[9px] font-black text-white italic">{totalXlm.toFixed(2)} XLM</p>
-        <p className="text-[8px] font-bold text-primary">{yesPct}% YES</p>
+        <p className="text-sm font-medium text-white">{totalXlm.toFixed(1)} XLM</p>
+        <p className="text-xs text-muted-foreground">{yesPct}% YES</p>
       </div>
     </button>
   );
@@ -342,6 +318,7 @@ function BetWidget({ marketId, isActive, minBet }: { marketId: string; isActive:
   const [amount, setAmount] = useState("");
   const [status, setStatus] = useState<BetStatus>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
   const minXlm = parseFloat(stroopsToXlm(minBet));
@@ -351,11 +328,13 @@ function BetWidget({ marketId, isActive, minBet }: { marketId: string; isActive:
     const xlm = parseFloat(amount);
     if (isNaN(xlm) || xlm < minXlm) {
       setErrorMsg(`Minimum bet is ${minXlm} XLM`);
+      setErrorDetail(null);
       setStatus("error");
       return;
     }
     setStatus("loading");
     setErrorMsg(null);
+    setErrorDetail(null);
     try {
       const result = await placeBet(marketId, side, xlmToStroops(xlm), address);
 
@@ -387,17 +366,22 @@ function BetWidget({ marketId, isActive, minBet }: { marketId: string; isActive:
         throw new Error("Unexpected response from server");
       }
     } catch (e: unknown) {
-      setErrorMsg(e instanceof Error ? e.message : "Transaction failed.");
+      const parsed = formatUiError(e, "Transaction failed. Please try again.");
+      setErrorMsg(parsed.message);
+      setErrorDetail(parsed.detail ?? null);
       setStatus("error");
     }
   };
 
   if (!isActive) {
     return (
-      <div className="bg-[#0D0D0D] border border-white/8 p-5">
-        <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest text-center py-2">
-          Market Closed
-        </p>
+      <div className="bg-[#0D0D0D] border border-white/5 rounded-xl flex items-center justify-center p-8 min-h-[140px]">
+        <div className="flex flex-col items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-red-500/50" />
+          <p className="text-xs font-black text-muted-foreground uppercase tracking-widest text-center">
+            MARKET CLOSED
+          </p>
+        </div>
       </div>
     );
   }
@@ -429,91 +413,91 @@ function BetWidget({ marketId, isActive, minBet }: { marketId: string; isActive:
   }
 
   return (
-    <div className="bg-[#0D0D0D] border border-white/8 p-5 space-y-4">
-      <p className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.35em]">PLACE A BET</p>
-
+    <div className="w-full flex flex-col gap-4">
       {!connected ? (
         <button
           onClick={connect}
           disabled={connecting}
-          className="flex items-center justify-center gap-2 w-full py-3.5 bg-primary text-black text-[9px] font-black uppercase tracking-widest hover:bg-white transition-all disabled:opacity-50"
+          className="group flex items-center justify-center gap-2 w-full py-4 bg-primary text-black text-sm font-black uppercase tracking-[0.2em] hover:bg-white transition-all disabled:opacity-50 rounded-sm"
         >
-          {connecting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
+          {connecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
           {connecting ? "CONNECTING…" : "CONNECT WALLET"}
         </button>
       ) : (
-        <>
-          {/* Side toggle */}
-          <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-4">
             <button
               onClick={() => setSide("yes")}
-              className={`py-3 text-[9px] font-black uppercase tracking-widest border-2 transition-all ${
+              className={`flex items-center justify-center gap-3 py-4 rounded-sm text-sm font-black uppercase tracking-widest border transition-all ${
                 side === "yes"
-                  ? "border-primary bg-primary/10 text-primary"
-                  : "border-white/10 text-muted-foreground hover:border-white/20 hover:text-white"
+                  ? "border-primary text-primary bg-primary/5 shadow-[0_0_15px_rgba(0,255,128,0.1)]"
+                  : "border-white/10 text-white/60 hover:border-white/30 hover:text-white bg-transparent"
               }`}
             >
-              <TrendingUp className="w-3.5 h-3.5 mx-auto mb-1" />
+              <TrendingUp className="w-4 h-4" />
               YES
             </button>
             <button
               onClick={() => setSide("no")}
-              className={`py-3 text-[9px] font-black uppercase tracking-widest border-2 transition-all ${
+              className={`flex items-center justify-center gap-3 py-4 rounded-sm text-sm font-black uppercase tracking-widest border transition-all ${
                 side === "no"
-                  ? "border-red-400 bg-red-400/10 text-red-400"
-                  : "border-white/10 text-muted-foreground hover:border-white/20 hover:text-white"
+                  ? "border-white/40 text-white bg-white/5"
+                  : "border-white/10 text-white/60 hover:border-white/30 hover:text-white bg-transparent"
               }`}
             >
-              <TrendingDown className="w-3.5 h-3.5 mx-auto mb-1" />
+              <TrendingDown className="w-4 h-4" />
               NO
             </button>
           </div>
 
-          {/* Amount */}
-          <div>
-            <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-1.5">
-              AMOUNT (min {minXlm} XLM)
-            </p>
-            <div className="flex items-center gap-2 border border-white/10 bg-white/[0.02] px-3 py-3 focus-within:border-primary/40 transition-colors">
+          <div className="flex gap-4 items-center">
+            <div className="flex-1 flex items-center gap-2 border border-white/10 rounded-sm bg-black/40 px-4 py-3 focus-within:border-primary/40 transition-colors">
               <input
                 type="number"
                 min={minXlm}
                 step="0.1"
                 value={amount}
-                onChange={(e) => { setAmount(e.target.value); setStatus("idle"); setErrorMsg(null); }}
-                placeholder={`${minXlm}`}
-                className="flex-1 bg-transparent text-sm font-black text-white placeholder:text-muted-foreground/40 outline-none"
+                onChange={(e) => {
+                  setAmount(e.target.value);
+                  setStatus("idle");
+                  setErrorMsg(null);
+                  setErrorDetail(null);
+                }}
+                placeholder={`min ${minXlm}`}
+                className="flex-1 bg-transparent text-sm font-black text-white placeholder:text-white/30 outline-none w-full"
               />
-              <span className="text-[9px] font-black text-muted-foreground">XLM</span>
+              <span className="text-[10px] font-black text-white/50 uppercase tracking-widest">XLM</span>
             </div>
+            
+            <button
+              onClick={handleBet}
+              disabled={status === "loading" || !amount}
+              className={`px-8 py-3 rounded-sm font-black uppercase text-xs tracking-widest transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 h-full ${
+                side === "yes"
+                  ? "bg-primary text-black hover:bg-white"
+                  : "bg-white text-black hover:bg-white/80"
+              }`}
+            >
+              {status === "loading" ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <>BET {side.toUpperCase()}</>
+              )}
+            </button>
           </div>
 
-          {/* Error */}
           {status === "error" && errorMsg && (
-            <p className="text-[9px] font-bold text-red-400">{errorMsg}</p>
+            <div className="space-y-1.5 px-4 py-2 border border-red-500/20 bg-red-500/5 rounded-lg">
+              <p className="text-[10px] font-bold text-red-400">{errorMsg}</p>
+              {errorDetail && (
+                <details className="text-[9px] text-red-300/80 break-all">
+                  <summary className="cursor-pointer font-bold uppercase tracking-wide">Show technical error</summary>
+                  <p className="mt-1.5 font-mono">{errorDetail}</p>
+                </details>
+              )}
+            </div>
           )}
-
-          {/* Submit */}
-          <button
-            onClick={handleBet}
-            disabled={status === "loading" || !amount}
-            className={`flex items-center justify-center gap-2 w-full py-4 font-black uppercase text-[9px] tracking-widest transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
-              side === "yes"
-                ? "bg-primary text-black hover:bg-white"
-                : "bg-red-500 text-white hover:bg-red-400"
-            }`}
-          >
-            {status === "loading" ? (
-              <><Loader2 className="w-3.5 h-3.5 animate-spin" /> CONFIRMING…</>
-            ) : (
-              <>BET {side.toUpperCase()} →</>
-            )}
-          </button>
-
-          <p className="text-[8px] text-muted-foreground/50 text-center tracking-widest">
-            {address?.slice(0, 6)}…{address?.slice(-4)}
-          </p>
-        </>
+        </div>
       )}
     </div>
   );
@@ -576,130 +560,118 @@ export default function MarketDetailPage({ params }: { params: Promise<{ id: str
   const threshold = formatViews(market.threshold);
 
   return (
-    <div className="min-h-screen bg-black">
-      <Navbar />
+    <div className="min-h-screen bg-black overflow-hidden flex flex-col">
+      <div className="max-w-[1600px] w-full mx-auto px-6 lg:px-8 xl:px-12 pt-24 pb-6 flex-1 min-h-0">
 
-      <div className="max-w-6xl mx-auto px-6 lg:px-8 pt-28 pb-20">
-        {/* Back */}
-        <Link
-          href="/markets"
-          className="inline-flex items-center gap-2 text-muted-foreground hover:text-white transition-colors text-[10px] font-black tracking-widest uppercase mb-8"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" /> BACK TO MARKETS
-        </Link>
+        {/* ── MAIN GRID ── */}
+        <div className="grid lg:grid-cols-[1fr_360px] xl:grid-cols-[1fr_400px] gap-8 h-full">
 
-        {/* Resolution banner */}
-        {isResolved && market.outcome && (
-          <div className="mb-6">
-            <ResolutionBanner outcome={market.outcome} threshold={market.threshold} />
-          </div>
-        )}
-
-        <div className="grid lg:grid-cols-[1fr_380px] gap-6 items-start">
           {/* ── LEFT COLUMN ── */}
-          <div className="space-y-5">
-            {/* YouTube embed */}
-            {market.content?.video_id && (
-              <div className="relative w-full aspect-video bg-black border border-white/10 overflow-hidden">
+          <div className="bg-[#0D0D0D] border border-white/10 rounded-sm p-6 md:p-8 flex flex-col gap-6 h-full overflow-y-auto lg:overflow-hidden">
+
+            {/* Header elements container to prevent them from shrinking */}
+            <div className="shrink-0 flex flex-col gap-6">
+              {/* Back */}
+              <Link
+                href="/markets"
+                className="inline-flex items-center gap-2 text-white/50 hover:text-white transition-colors text-[10px] font-black tracking-widest uppercase"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" /> BACK TO MARKETS
+              </Link>
+
+              {/* Title + meta */}
+              {market.content && (
+                <div>
+                  <p className="text-[10px] font-black text-white/50 uppercase tracking-widest mb-1.5">
+                    {market.content.channel} · {formatViews(market.content.current_views)} views
+                  </p>
+                  <h1 className="text-xl md:text-2xl font-black text-white uppercase italic leading-snug tracking-tight">
+                    WILL &ldquo;{market.content.title}&rdquo; REACH{" "}
+                    <span className="text-primary">{threshold} VIEWS</span> IN {market.window_hours}H?
+                  </h1>
+                </div>
+              )}
+            </div>
+
+            {/* Video */}
+            <div className="relative w-full aspect-video min-h-[280px] lg:min-h-[380px] bg-black border border-white/10 overflow-hidden rounded-sm shrink-0 shadow-[0_0_20px_rgba(0,255,128,0.03)]">
+              {market.content?.video_id ? (
                 <iframe
                   src={`https://www.youtube.com/embed/${market.content.video_id}`}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
                   className="absolute inset-0 w-full h-full"
                 />
-              </div>
-            )}
-
-            {/* Odds card */}
-            <div className="bg-[#0D0D0D] border border-white/8 p-6">
-              <p className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.35em] mb-5">CURRENT ODDS</p>
-              <div className="grid grid-cols-[1fr_auto] gap-6 items-center">
-                <OddsBar yesPct={yesPct} noPct={noPct} yesXlm={yesXlm} noXlm={noXlm} />
-                <div className="w-24 h-24 shrink-0">
-                  <DonutChart yesPct={yesPct} />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <p className="text-white/40 text-xs tracking-widest">NO VIDEO</p>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* How you win */}
-            <div className="bg-[#0D0D0D] border border-white/8 p-5">
-              <p className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.35em] mb-4">HOW YOU WIN</p>
-              <div className="grid sm:grid-cols-2 gap-3">
-                <div className={`p-4 border ${isResolved && market.outcome === "YES" ? "border-primary/40 bg-primary/8" : "border-primary/15 bg-primary/5"}`}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <TrendingUp className="w-3.5 h-3.5 text-primary" />
-                    <span className="text-[9px] font-black text-primary tracking-widest">BET YES</span>
-                    {isResolved && market.outcome === "YES" && <Trophy className="w-3 h-3 text-primary ml-auto" />}
-                  </div>
-                  <p className="text-[10px] text-white/70 leading-relaxed">
-                    Win if the video reaches <span className="text-primary font-bold">{threshold} views</span> before the deadline. You get your stake back + a share of the NO pool.
-                  </p>
-                  {totalXlm > 0 && (
-                    <p className="text-[9px] text-primary font-black mt-2">
-                      Current payout: ~{(1 + noXlm / Math.max(yesXlm, 0.001)).toFixed(2)}x
-                    </p>
-                  )}
-                </div>
-                <div className={`p-4 border ${isResolved && market.outcome === "NO" ? "border-red-400/40 bg-red-400/5" : "border-white/8 bg-white/[0.02]"}`}>
-                  <div className="flex items-center gap-2 mb-2">
-                    <TrendingDown className="w-3.5 h-3.5 text-white/60" />
-                    <span className="text-[9px] font-black text-white/60 tracking-widest">BET NO</span>
-                    {isResolved && market.outcome === "NO" && <Trophy className="w-3 h-3 text-white ml-auto" />}
-                  </div>
-                  <p className="text-[10px] text-white/70 leading-relaxed">
-                    Win if the video <span className="font-bold text-white">fails to reach</span> {threshold} views in time. You get your stake back + a share of the YES pool.
-                  </p>
-                  {totalXlm > 0 && (
-                    <p className="text-[9px] text-white/60 font-black mt-2">
-                      Current payout: ~{(1 + yesXlm / Math.max(noXlm, 0.001)).toFixed(2)}x
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
+            {/* Bottom elements container */}
+            <div className="shrink-0 flex flex-col gap-6">
+              {/* Bet widget */}
+              <BetWidget marketId={activeMarketId} isActive={isActive} minBet={market.min_bet} />
 
-            {/* Bet history */}
-            <div className="bg-[#0D0D0D] border border-white/8">
-              <div className="px-5 py-3 border-b border-white/5 flex items-center justify-between">
-                <p className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.35em]">BET HISTORY</p>
-                <p className="text-[9px] font-black text-muted-foreground">{bets.length} bets</p>
-              </div>
-              <div className="px-5">
-                {bets.length === 0 ? (
-                  <p className="text-[10px] text-muted-foreground py-6 text-center tracking-widest">NO BETS YET — BE FIRST</p>
-                ) : (
-                  bets.map((bet, i) => (
-                    <BetRow key={bet.id} bet={bet} outcome={market.outcome ?? null} index={i} />
-                  ))
-                )}
+              {/* Stats panel */}
+              <div className="border border-white/10 rounded-sm p-5 md:p-6 flex flex-col md:flex-row gap-6 items-start">
+                <div className="md:w-32 shrink-0">
+                  <p className="text-[10px] font-black text-white uppercase tracking-widest">OTHER INFO</p>
+                </div>
+
+                <div className="flex-1 flex flex-col gap-6 w-full">
+                  {/* Odds bars */}
+                  <OddsBar yesPct={yesPct} noPct={noPct} yesXlm={yesXlm} noXlm={noXlm} />
+
+                  {/* Stats grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-4 border-t border-white/5 pt-5">
+                    <div>
+                      <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest mb-0.5">TVL</p>
+                      <p className="text-sm font-black text-primary italic">{totalXlm.toFixed(1)} XLM</p>
+                    </div>
+                    <div>
+                      <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest mb-0.5">VIEWS</p>
+                      <p className="text-sm font-black text-white">{formatViews(market.content?.current_views ?? 0)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest mb-0.5">TIME LEFT</p>
+                      <p className="text-sm font-black text-white">
+                        {isActive ? formatDeadline(market.deadline) : market.status.replace("_", " ")}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest mb-0.5">BETS</p>
+                      <p className="text-sm font-black text-white">{bets.length}</p>
+                    </div>
+                    {totalXlm > 0 && (
+                      <>
+                        <div>
+                          <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest mb-0.5">YES PAYOUT</p>
+                          <p className="text-sm font-black text-primary">~{(1 + noXlm / Math.max(yesXlm, 0.001)).toFixed(2)}x</p>
+                        </div>
+                        <div>
+                          <p className="text-[8px] font-bold text-white/50 uppercase tracking-widest mb-0.5">NO PAYOUT</p>
+                          <p className="text-sm font-black text-white/70">~{(1 + yesXlm / Math.max(noXlm, 0.001)).toFixed(2)}x</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
 
           {/* ── RIGHT COLUMN ── */}
-          <div className="space-y-4 lg:sticky lg:top-24">
-            {/* Title + meta */}
-            {market.content && (
-              <div>
-                <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-2">
-                  {market.content.channel} · {formatViews(market.content.current_views)} current views
-                </p>
-                <h1 className="text-base font-black text-white uppercase italic leading-snug tracking-tight">
-                  WILL "{market.content.title?.slice(0, 55)}" REACH{" "}
-                  <span className="text-primary">{threshold} VIEWS</span> IN {market.window_hours}H?
-                </h1>
-              </div>
-            )}
+          <div className="flex flex-col gap-6 lg:h-full lg:overflow-hidden">
 
-            {/* All markets for this video */}
-            {!!market.related_markets?.length && (
-              <div className="bg-[#0D0D0D] border border-white/8">
-                <div className="px-4 py-3 border-b border-white/5">
-                  <p className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.3em]">
-                    ALL VIDEO MARKETS
-                  </p>
-                </div>
-                <div>
+            {/* Active markets list */}
+            <div className="bg-[#0D0D0D] border border-white/10 rounded-sm flex flex-col min-h-0 flex-1">
+              <div className="px-6 py-5 shrink-0">
+                <p className="text-[10px] font-black text-white uppercase tracking-widest">ACTIVE MARKETS</p>
+              </div>
+              {market.related_markets?.length ? (
+                <div className="px-4 pb-4 space-y-2 overflow-y-auto flex-1">
                   {market.related_markets.map((m) => (
                     <RelatedMarketRow
                       key={m.id}
@@ -709,27 +681,21 @@ export default function MarketDetailPage({ params }: { params: Promise<{ id: str
                     />
                   ))}
                 </div>
+              ) : (
+                <p className="text-[10px] text-white/50 px-6 pb-6 tracking-widest">NO OTHER MARKETS</p>
+              )}
+            </div>
+
+            {/* Create new market */}
+            {market.content?.video_id && (
+              <div className="shrink-0">
+                <VideoMarketCreateBox
+                  videoId={market.content.video_id}
+                  userAddress={address}
+                  onCreated={handleSwitchMarket}
+                />
               </div>
             )}
-
-            {market.content?.video_id && (
-              <VideoMarketCreateBox
-                videoId={market.content.video_id}
-                userAddress={address}
-                onCreated={handleSwitchMarket}
-              />
-            )}
-
-            {/* Bet widget */}
-            <BetWidget marketId={activeMarketId} isActive={isActive} minBet={market.min_bet} />
-
-            {/* Contract */}
-            <div className="bg-[#0D0D0D] border border-white/5 p-4">
-              <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-1.5">CONTRACT</p>
-              <p className="text-[9px] font-mono text-white/40 break-all leading-relaxed">
-                {market.contract_address || "Not deployed"}
-              </p>
-            </div>
           </div>
         </div>
       </div>

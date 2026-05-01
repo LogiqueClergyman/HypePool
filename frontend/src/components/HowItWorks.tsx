@@ -5,21 +5,21 @@ import { motion } from "framer-motion";
 const STEPS = [
   {
     n: "01",
-    title: "PASTE A VIDEO",
-    body: "Drop any YouTube link. We pull the live view count instantly.",
-    detail: "youtube.com/watch?v=...",
+    title: "WHAT WE ARE",
+    body: "DECENTRALIZED PREDICTION MARKETS FOR VIRAL YOUTUBE METRICS. NO LIMITS. NO CUSTODY.",
+    detail: "TRADE THE ATTENTION ECONOMY",
   },
   {
     n: "02",
-    title: "PLACE YOUR BET",
-    body: "Pick a view milestone and timeframe. Stake XLM on YES or NO.",
-    detail: "Will it hit 50M in 24h?",
+    title: "HOW IT WORKS",
+    body: "WE USE SOROBAN SMART CONTRACTS FOR TRUSTLESS RESOLUTION. PREDICT IF A VIDEO HITS A VIEW MILESTONE AND STAKE XLM.",
+    detail: "ON-CHAIN SETTLEMENT",
   },
   {
     n: "03",
-    title: "COLLECT YOUR WIN",
-    body: "Soroban smart contracts check the count and pay out winners automatically.",
-    detail: "Winner takes the pool.",
+    title: "WHY CARE",
+    body: "YOU ALREADY SPEND HOURS WATCHING YOUTUBE. NOW PROFIT FROM YOUR INTUITION BEFORE THE CROWD CATCHES ON.",
+    detail: "TURN SCREEN TIME TO XLM",
   },
 ];
 
@@ -51,7 +51,7 @@ export default function HowItWorks() {
             viewport={{ once: true }}
             className="text-[9px] font-black text-primary uppercase tracking-[0.4em] mb-4"
           >
-            HOW IT WORKS
+            THE NEW META
           </motion.p>
           <motion.h2
             initial={{ opacity: 0, y: 12 }}
@@ -60,9 +60,9 @@ export default function HowItWorks() {
             transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
             className="text-4xl sm:text-5xl lg:text-6xl font-black text-white uppercase italic tracking-tighter leading-none"
           >
-            THREE STEPS.
+            THE ATTENTION
             <br />
-            <span className="text-primary">THAT'S IT.</span>
+            <span className="text-primary">ECONOMY.</span>
           </motion.h2>
         </div>
 
@@ -78,7 +78,7 @@ export default function HowItWorks() {
             <motion.div
               key={step.n}
               variants={item as any}
-              className={`group relative p-10 lg:p-14 hover:bg-white/[0.015] transition-all duration-300 ${
+              className={`group relative p-10 lg:p-14 hover:bg-white/[0.02] hover:scale-[1.01] transition-all duration-300 z-10 hover:z-20 hover:shadow-[0_0_40px_rgba(0,255,128,0.05)] ${
                 i < STEPS.length - 1 ? "border-b lg:border-b-0 lg:border-r border-white/[0.06]" : ""
               }`}
             >
@@ -100,7 +100,7 @@ export default function HowItWorks() {
               </h3>
 
               {/* Body */}
-              <p className="text-sm text-muted-foreground leading-relaxed mb-8">
+              <p className="text-sm font-bold text-white/70 leading-relaxed mb-8">
                 {step.body}
               </p>
 

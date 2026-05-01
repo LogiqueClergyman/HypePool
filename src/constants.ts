@@ -35,7 +35,7 @@ export const TIME_WINDOWS: number[] = isTestMode
   : parseEnvNumberList('MARKET_TIME_WINDOWS', DEFAULT_TIME_WINDOWS);
 
 // Resolution grace period — oracle has this many hours after deadline to resolve
-export const RESOLUTION_GRACE_HOURS = 2;
+export const RESOLUTION_GRACE_HOURS = isTestMode ? 10 : 2;
 
 // Default minimum bet in stroops (0.1 XLM = 1_000_000 stroops)
 export const DEFAULT_MIN_BET = 1_000_000n;
