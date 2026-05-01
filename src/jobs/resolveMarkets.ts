@@ -59,14 +59,16 @@ export async function resolveMarkets(): Promise<void> {
         
         const winningBets = await prisma.bet.findMany({
           where: { marketId: market.id, side: market.outcome! as any, claimed: false },
-          include: { user: true },
+          include: { user: { include: { custodialWallet: true } } },
           take: 25,
           orderBy: { createdAt: 'asc' },
         });
 
         for (const bet of winningBets) {
           try {
-            const { txHash, payout } = await stellarService.claimForUser(market.contractAddress, bet.user.stellarAddress);
+            // Bets placed via custodial flow are executed from custodial address, not owner address.
+            const claimantAddress = bet.user.custodialWallet?.custodialAddress ?? bet.user.stellarAddress;
+            const { txHash, payout } = await stellarService.claimForUser(market.contractAddress, claimantAddress);
             await prisma.bet.update({
               where: { id: bet.id },
               data: { claimed: true, claimTxHash: txHash, payout }

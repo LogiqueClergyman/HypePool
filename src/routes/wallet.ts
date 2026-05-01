@@ -26,19 +26,11 @@ router.post('/create', validate(createSchema), async (req: Request, res: Respons
     });
 
     const existing = await prisma.custodialWallet.findUnique({ where: { userId: user.id } });
-    if (existing) {
-      return res.status(200).json({ custodial_address: existing.custodialAddress, status: 'active' });
-    }
+    if (existing) throw new AppError(409, 'wallet_exists', 'User already has a custodial wallet');
 
     const walletService = new WalletService(config.encryption.masterKey);
     const keypair = walletService.generateKeypair();
     const encryptedKey = walletService.encrypt(keypair.secretKey);
-
-    try {
-      await fetch(`https://friendbot.stellar.org/?addr=${keypair.publicKey}`);
-    } catch (e) {
-      console.warn("Friendbot funding failed or delayed:", e);
-    }
 
     const wallet = await prisma.custodialWallet.create({
       data: {
@@ -50,7 +42,7 @@ router.post('/create', validate(createSchema), async (req: Request, res: Respons
 
     return res.status(201).json({
       custodial_address: wallet.custodialAddress,
-      status: 'active'
+      status: 'pending_funding'
     });
   } catch (error) {
     next(error);
@@ -83,7 +75,7 @@ router.get('/:address', async (req: Request, res: Response, next: NextFunction) 
     try {
       const account = await horizon.loadAccount(wallet.custodialAddress);
       const nativeBal = account.balances.find((b: any) => b.asset_type === 'native');
-      if (nativeBal) balance = String(Math.floor(parseFloat(nativeBal.balance) * 1_000_000));
+      if (nativeBal) balance = String(Math.floor(parseFloat(nativeBal.balance) * 10_000_000));
     } catch { /* Horizon unreachable — return 0 */ }
 
     return res.status(200).json({
@@ -122,7 +114,7 @@ router.post('/withdraw', validate(withdrawSchema), async (req: Request, res: Res
 
     const sourceAccount = await horizon.loadAccount(custodial_address);
     const fee = String(await horizon.fetchBaseFee());
-    const xlmAmount = (amount / 1_000_000).toFixed(7);
+    const xlmAmount = (amount / 10_000_000).toFixed(7);
 
     const tx = new TransactionBuilder(sourceAccount, {
       fee,
@@ -137,7 +129,7 @@ router.post('/withdraw', validate(withdrawSchema), async (req: Request, res: Res
 
     const updated = await horizon.loadAccount(custodial_address);
     const updatedBal = updated.balances.find((b: any) => b.asset_type === 'native');
-    const newBalance = updatedBal ? String(Math.floor(parseFloat(updatedBal.balance) * 1_000_000)) : "0";
+    const newBalance = updatedBal ? String(Math.floor(parseFloat(updatedBal.balance) * 10_000_000)) : "0";
 
     return res.status(200).json({
       tx_hash: result.hash,

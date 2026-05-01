@@ -26,8 +26,9 @@ export default function MarketStats({ market }: Props) {
   const yesXlm = parseFloat(stroopsToXlm(market.yes_pool));
   const noXlm = parseFloat(stroopsToXlm(market.no_pool));
   const totalXlm = yesXlm + noXlm;
-  const yesPct = computePercent(market.yes_pool, market.no_pool);
-  const noPct = 100 - yesPct;
+  const hasLiquidity = totalXlm > 0;
+  const yesPct = hasLiquidity ? computePercent(market.yes_pool, market.no_pool) : 0;
+  const noPct = hasLiquidity ? 100 - yesPct : 0;
   const deadline = formatDeadline(market.deadline);
   const threshold = formatViews(market.threshold);
   const isActive = market.status === "ACTIVE";

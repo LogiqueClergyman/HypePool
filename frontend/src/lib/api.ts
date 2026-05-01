@@ -22,6 +22,7 @@ export interface TiersResponse {
   current_views: number;
   available_tiers: number[];
   available_windows: number[];
+  window_unit?: "hours" | "minutes";
   existing_markets: { threshold: number; window_hours: number; market_id: string }[];
 }
 
@@ -78,6 +79,7 @@ export interface Market {
 }
 
 export interface MarketContent {
+  id?: string;
   video_id: string;
   title: string;
   channel: string;
@@ -87,6 +89,15 @@ export interface MarketContent {
 
 export interface MarketDetail extends Market {
   content?: MarketContent;
+  related_markets?: Array<{
+    id: string;
+    threshold: number;
+    window_hours: number;
+    deadline: string;
+    status: "ACTIVE" | "RESOLVED_YES" | "RESOLVED_NO" | "EXPIRED";
+    yes_pool: string;
+    no_pool: string;
+  }>;
 }
 
 export interface MarketBet {
@@ -103,13 +114,11 @@ export interface MarketBet {
 export interface FeedItem {
   content: {
     id: string;
-    platform: string;
-    external_id: string;
-    url: string;
+    video_id: string;
     title: string;
-    author: string;
-    thumbnail_url: string;
-    current_views: string;
+    channel: string;
+    thumbnail: string;
+    current_views: number;
   };
   markets: Market[];
   total_volume: string;
@@ -262,15 +271,26 @@ export function getWallet(address: string): Promise<WalletInfo> {
   return req(`/wallet/${address}`);
 }
 
+export function withdrawWallet(
+  custodial_address: string,
+  amount: number,
+  destination: string
+): Promise<{ tx_hash: string; new_balance: string }> {
+  return req("/wallet/withdraw", {
+    method: "POST",
+    body: JSON.stringify({ custodial_address, amount, destination }),
+  });
+}
+
 // ── Formatting Helpers ────────────────────────────────────────────────────────
 
 export function stroopsToXlm(stroops: string | number | bigint): string {
   const n = typeof stroops === "bigint" ? Number(stroops) : Number(stroops);
-  return (n / 1_000_000).toFixed(2);
+  return (n / 10_000_000).toFixed(2);
 }
 
 export function xlmToStroops(xlm: number): number {
-  return Math.floor(xlm * 1_000_000);
+  return Math.floor(xlm * 10_000_000);
 }
 
 export function formatViews(views: number | string | bigint): string {

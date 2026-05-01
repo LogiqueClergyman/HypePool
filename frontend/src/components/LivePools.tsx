@@ -179,11 +179,11 @@ export default function LivePools() {
             const yes = Number(m.yes_pool);
             const no = Number(m.no_pool);
             const total = yes + no;
-            const yesPct = computePercent(m.yes_pool, m.no_pool);
+            const yesPct = total > 0 ? computePercent(m.yes_pool, m.no_pool) : 0;
             return {
               id: m.id,
               title: `WILL "${item.content.title.slice(0, 40).toUpperCase()}" REACH ${formatViews(m.threshold)} VIEWS?`,
-              thumbnail: item.content.thumbnail_url || "",
+              thumbnail: item.content.thumbnail || "",
               timeLeft: formatDeadline(m.deadline),
               totalStaked: total,
               yesPercent: yesPct,

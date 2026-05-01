@@ -73,8 +73,9 @@ function LiveBar({ pct, color }: { pct: number; color: string }) {
 type FeaturedMarket = Market & { content?: MarketContent };
 
 function LiveCard({ market }: { market: FeaturedMarket | null }) {
-  const yesPct = market ? computePercent(market.yes_pool, market.no_pool) : 68;
-  const noPct = 100 - yesPct;
+  const hasLiquidity = market ? Number(market.yes_pool) + Number(market.no_pool) > 0 : false;
+  const yesPct = market ? (hasLiquidity ? computePercent(market.yes_pool, market.no_pool) : 0) : 68;
+  const noPct = market ? (hasLiquidity ? 100 - yesPct : 0) : 32;
   const totalXlm = market
     ? parseFloat(stroopsToXlm(String(Number(market.yes_pool) + Number(market.no_pool))))
     : 0;
@@ -278,7 +279,7 @@ export default function Hero() {
       .catch(() => {});
   }, []);
 
-  const totalVolXlm = stats ? Math.floor(Number(stats.total_volume) / 1_000_000) : 0;
+  const totalVolXlm = stats ? Math.floor(Number(stats.total_volume) / 10_000_000) : 0;
 
   return (
     <>

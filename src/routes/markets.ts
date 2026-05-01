@@ -108,12 +108,17 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     });
 
     if (!market) throw new AppError(404, 'market_not_found', 'Market not found');
+    const relatedMarkets = await prisma.market.findMany({
+      where: { contentId: market.contentId },
+      orderBy: { createdAt: 'desc' }
+    });
 
     return res.status(200).json({
       id: market.id,
       onchain_id: market.onchainId,
       contract_address: market.contractAddress,
       content: {
+        id: market.content.id,
         video_id: market.content.externalId,
         title: market.content.title,
         channel: market.content.author,
@@ -131,7 +136,16 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       status: market.status,
       outcome: market.outcome,
       resolved_at: market.resolvedAt?.toISOString() || null,
-      created_at: market.createdAt.toISOString()
+      created_at: market.createdAt.toISOString(),
+      related_markets: relatedMarkets.map((m) => ({
+        id: m.id,
+        threshold: Number(m.threshold),
+        window_hours: m.windowHours,
+        deadline: m.deadline.toISOString(),
+        status: m.status,
+        yes_pool: m.yesPool.toString(),
+        no_pool: m.noPool.toString(),
+      }))
     });
   } catch (error) {
     next(error);

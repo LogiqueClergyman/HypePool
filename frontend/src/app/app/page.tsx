@@ -14,6 +14,7 @@ import {
   type BetRecord,
 } from "@/lib/api";
 import { Zap } from "lucide-react";
+import CustodialWalletPanel from "@/components/CustodialWalletPanel";
 
 type FilterTab = "all" | "active" | "won" | "lost";
 
@@ -234,7 +235,9 @@ export default function PortfolioPage() {
       : "—";
 
   return (
-    <div className="max-w-3xl mx-auto px-5 py-10">
+    <div>
+      <CustodialWalletPanel />
+      <div className="max-w-3xl mx-auto px-5 py-10">
       {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
@@ -353,6 +356,7 @@ export default function PortfolioPage() {
           </button>
         </div>
       )}
+      </div>
     </div>
   );
 }

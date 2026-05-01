@@ -17,7 +17,7 @@ function withLock(name: string, fn: () => Promise<void>): () => void {
 
 export function startScheduler() {
   console.log('Background Jobs Scheduler started.');
-  cron.schedule('*/5 * * * *',  withLock('resolveMarkets', resolveMarkets));  // every 5 min
-  cron.schedule('*/15 * * * *', withLock('syncState', syncState));             // every 15 min
-  cron.schedule('*/30 * * * *', withLock('refreshContent', refreshContent));  // every 30 min
+  cron.schedule('* * * * *',    withLock('resolveMarkets', resolveMarkets));  // every 1 min
+  cron.schedule('*/5 * * * *',  withLock('syncState', syncState));             // every 5 min
+  cron.schedule('*/10 * * * *', withLock('refreshContent', refreshContent));  // every 10 min
 }

@@ -1,4 +1,4 @@
-import { rpc, Contract, TransactionBuilder, Keypair, nativeToScVal, Address, xdr } from '@stellar/stellar-sdk';
+import { rpc, Contract, TransactionBuilder, Keypair, nativeToScVal, Address, xdr, scValToNative } from '@stellar/stellar-sdk';
 import { config as appConfig } from '../config';
 import { logger } from '../lib/logger';
 
@@ -201,19 +201,56 @@ export class StellarService {
   }
 
   async getMarketState(marketAddr: string): Promise<{ yesPool: bigint; noPool: bigint; yesWeightedPool: bigint; noWeightedPool: bigint; outcome: string; totalBettors: number }> {
-    const contract = new Contract(marketAddr);
-    const tx = new TransactionBuilder(
-      await withTimeout(this.server.getAccount(this.oracleKeypair.publicKey()), 10_000, 'getAccount/state'),
-      { fee: '100', networkPassphrase: this.networkPassphrase }
-    ).addOperation(contract.call('get_state')).setTimeout(30).build();
+    const empty = { yesPool: 0n, noPool: 0n, yesWeightedPool: 0n, noWeightedPool: 0n, outcome: 'Unresolved', totalBettors: 0 };
+    try {
+      const contract = new Contract(marketAddr);
+      const tx = new TransactionBuilder(
+        await withTimeout(this.server.getAccount(this.oracleKeypair.publicKey()), 10_000, 'getAccount/state'),
+        { fee: '100', networkPassphrase: this.networkPassphrase }
+      ).addOperation(contract.call('get_state')).setTimeout(30).build();
 
-    const simulated = await withTimeout(this.server.simulateTransaction(tx), 15_000, 'simulate/state');
-    if (!rpc.Api.isSimulationSuccess(simulated) || !simulated.result?.retval) return { yesPool: 0n, noPool: 0n, yesWeightedPool: 0n, noWeightedPool: 0n, outcome: 'Unresolved', totalBettors: 0 };
-    
-    // Parse result
-    const scv = simulated.result.retval;
-    // ... custom parsing depending on SorobanSDK ...
-    return { yesPool: 0n, noPool: 0n, yesWeightedPool: 0n, noWeightedPool: 0n, outcome: 'Unresolved', totalBettors: 0 }; // Placeholder
+      const simulated = await withTimeout(this.server.simulateTransaction(tx), 15_000, 'simulate/state');
+      if (!rpc.Api.isSimulationSuccess(simulated) || !simulated.result?.retval) return empty;
+
+      const state = scValToNative(simulated.result.retval) as Record<string, unknown>;
+
+      const toBigInt = (val: unknown): bigint => {
+        if (typeof val === 'bigint') return val;
+        if (typeof val === 'number') return BigInt(Math.floor(val));
+        if (typeof val === 'string') return BigInt(val);
+        return 0n;
+      };
+
+      // Soroban unit enum becomes { VariantName: [] } or just the symbol string
+      let outcome = 'Unresolved';
+      if (state.outcome !== undefined) {
+        const o = state.outcome as unknown;
+        if (typeof o === 'string') {
+          outcome = o;
+        } else if (o && typeof o === 'object') {
+          const keys = Object.keys(o as object);
+          if (keys.length > 0) outcome = keys[0];
+        }
+      }
+
+      let totalBettors = 0;
+      if (state.bettors instanceof Map) {
+        totalBettors = state.bettors.size;
+      } else if (Array.isArray(state.bettors)) {
+        totalBettors = state.bettors.length;
+      }
+
+      return {
+        yesPool: toBigInt(state.yes_pool),
+        noPool: toBigInt(state.no_pool),
+        yesWeightedPool: toBigInt(state.yes_weighted_pool),
+        noWeightedPool: toBigInt(state.no_weighted_pool),
+        outcome,
+        totalBettors,
+      };
+    } catch {
+      return empty;
+    }
   }
 
   async resolveMarket(marketAddr: string, outcome: 'Yes' | 'No'): Promise<string> {
@@ -248,12 +285,19 @@ export class StellarService {
 
   async claimForUser(marketAddr: string, userAddr: string): Promise<{ txHash: string; payout: bigint }> {
     const xdrStr = await this.buildAndSimulate(
-      this.oracleKeypair.publicKey(), // oracle fee source
+      this.oracleKeypair.publicKey(),
       marketAddr,
       'claim',
       [new Address(userAddr).toScVal()]
     );
-    const { txHash } = await this.signAndSubmit(xdrStr, this.oracleKeypair);
-    return { txHash, payout: 0n }; // Return parsed payout using getTransaction
+    const { txHash, txResponse } = await this.signAndSubmit(xdrStr, this.oracleKeypair);
+    let payout = 0n;
+    if ('returnValue' in txResponse && txResponse.returnValue) {
+      try {
+        const native = scValToNative(txResponse.returnValue);
+        payout = BigInt(native as string | number | bigint);
+      } catch {}
+    }
+    return { txHash, payout };
   }
 }

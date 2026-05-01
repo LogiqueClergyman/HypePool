@@ -8,11 +8,21 @@ import { TierService } from '../services/tiers';
 import { getStellarService } from '../services/stellar';
 import { WalletService } from '../services/wallet';
 import { config } from '../config';
-import { TIME_WINDOWS, DEFAULT_MIN_BET, PLATFORM_FEE_BPS, RESOLUTION_GRACE_HOURS } from '../constants';
+import { TIME_WINDOWS, DEFAULT_MIN_BET, PLATFORM_FEE_BPS, RESOLUTION_GRACE_HOURS, MAX_TIERS } from '../constants';
 import { rpc, Address, Keypair } from '@stellar/stellar-sdk';
 import { logger } from '../lib/logger';
 
 const router = Router();
+const MAX_VIDEO_AGE_HOURS = Number(process.env.MAX_VIDEO_AGE_HOURS || '72');
+const WINDOW_UNIT_SECONDS = config.market.windowUnit === 'minutes' ? 60 : 3600;
+
+function assertVideoIsRecent(publishedAt: Date): void {
+  const videoAgeMs = Date.now() - publishedAt.getTime();
+  const maxAgeMs = MAX_VIDEO_AGE_HOURS * 60 * 60 * 1000;
+  if (videoAgeMs > maxAgeMs) {
+    throw new AppError(400, 'video_too_old', `Only videos published within the last ${MAX_VIDEO_AGE_HOURS} hours are eligible`);
+  }
+}
 
 const tiersSchema = z.object({
   url: z.string().url(),
@@ -35,6 +45,7 @@ router.post('/tiers', validate(tiersSchema), async (req: Request, res: Response,
     
     const details = await provider.getContentDetails(externalId);
     if (!details) throw new AppError(404, 'content_not_found', 'Content not found or private');
+    assertVideoIsRecent(details.publishedAt);
 
     const available_tiers = TierService.computeTiers(details.currentViews);
     const existing_markets = content?.markets.map(m => ({
@@ -53,6 +64,7 @@ router.post('/tiers', validate(tiersSchema), async (req: Request, res: Response,
       current_views: details.currentViews,
       available_tiers,
       available_windows: TIME_WINDOWS,
+      window_unit: config.market.windowUnit,
       existing_markets
     });
   } catch (error) {
@@ -62,8 +74,8 @@ router.post('/tiers', validate(tiersSchema), async (req: Request, res: Response,
 
 const submitSchema = z.object({
   url: z.string().url(),
-  tiers: z.array(z.coerce.number().int().positive()).min(1).max(4),
-  windows: z.array(z.coerce.number().int().positive()).min(1).max(4),
+  tiers: z.array(z.coerce.number().int().positive()).min(1).max(MAX_TIERS),
+  windows: z.array(z.coerce.number().int().positive()).min(1).max(TIME_WINDOWS.length),
   user_address: z.string().trim().min(56).max(69),
 });
 
@@ -79,9 +91,13 @@ router.post('/submit', validate(submitSchema), async (req: Request, res: Respons
 
     const details = await provider.getContentDetails(externalId);
     if (!details) throw new AppError(404, 'content_not_found', 'Content not found or private');
+    assertVideoIsRecent(details.publishedAt);
 
     if (!TierService.validateTiers(tiers)) {
       throw new AppError(400, 'invalid_tier', 'Tier is not from the valid ladder');
+    }
+    if (!windows.every((w: number) => TIME_WINDOWS.includes(w))) {
+      throw new AppError(400, 'invalid_window', 'Window is not in the configured time windows');
     }
 
     const user = await prisma.user.upsert({
@@ -119,8 +135,8 @@ router.post('/submit', validate(submitSchema), async (req: Request, res: Respons
       for (const tier of tiers) {
         for (const window of windows) {
           const now = Math.floor(Date.now() / 1000);
-          const deadline = now + (window * 3600);
-          const resolutionDeadline = deadline + (RESOLUTION_GRACE_HOURS * 3600);
+          const deadline = now + (window * WINDOW_UNIT_SECONDS);
+          const resolutionDeadline = deadline + (RESOLUTION_GRACE_HOURS * WINDOW_UNIT_SECONDS);
 
           let txHash: string | null = null;
           let txResponse: any = null;
@@ -229,8 +245,8 @@ router.post('/submit', validate(submitSchema), async (req: Request, res: Respons
       for (const tier of tiers) {
         for (const window of windows) {
           const now = Math.floor(Date.now() / 1000);
-          const deadline = now + (window * 3600);
-          const resolutionDeadline = deadline + (RESOLUTION_GRACE_HOURS * 3600);
+          const deadline = now + (window * WINDOW_UNIT_SECONDS);
+          const resolutionDeadline = deadline + (RESOLUTION_GRACE_HOURS * WINDOW_UNIT_SECONDS);
 
           const marketConfig = {
             contentUrl: details.url,

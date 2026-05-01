@@ -1,11 +1,14 @@
 "use client";
 
 import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
+import { getWallet, createWallet, type WalletInfo } from "@/lib/api";
 
 export interface WalletState {
   address: string | null;
   network: "TESTNET" | "MAINNET" | null;
   connected: boolean;
+  custodialWallet: WalletInfo | null;
+  custodialLoading: boolean;
 }
 
 interface WalletContextValue extends WalletState {
@@ -13,6 +16,8 @@ interface WalletContextValue extends WalletState {
   disconnect: () => void;
   connecting: boolean;
   error: string | null;
+  createCustodialWallet: () => Promise<void>;
+  refreshCustodialWallet: () => Promise<void>;
 }
 
 const WalletContext = createContext<WalletContextValue | null>(null);
@@ -22,15 +27,27 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     address: null,
     network: null,
     connected: false,
+    custodialWallet: null,
+    custodialLoading: false,
   });
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const fetchCustodialWallet = useCallback(async (address: string) => {
+    setState(prev => ({ ...prev, custodialLoading: true }));
+    try {
+      const wallet = await getWallet(address);
+      setState(prev => ({ ...prev, custodialWallet: wallet, custodialLoading: false }));
+    } catch {
+      // 404 = no custodial wallet yet, that's fine
+      setState(prev => ({ ...prev, custodialWallet: null, custodialLoading: false }));
+    }
+  }, []);
 
   const connect = useCallback(async () => {
     setConnecting(true);
     setError(null);
     try {
-      // Dynamic import to avoid SSR issues
       const { isConnected, requestAccess, getAddress, getNetwork } = await import(
         "@stellar/freighter-api"
       );
@@ -46,26 +63,47 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const networkResult = await getNetwork();
       const network = typeof networkResult === "string" ? networkResult : (networkResult as { network: string }).network;
 
-      setState({
+      setState(prev => ({
+        ...prev,
         address,
         network: network === "TESTNET" ? "TESTNET" : "MAINNET",
         connected: true,
-      });
+      }));
       localStorage.setItem("hp_wallet_connected", "1");
+
+      // Check custodial wallet after connecting
+      fetchCustodialWallet(address);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to connect wallet");
     } finally {
       setConnecting(false);
     }
-  }, []);
+  }, [fetchCustodialWallet]);
 
   const disconnect = useCallback(() => {
-    setState({ address: null, network: null, connected: false });
+    setState({ address: null, network: null, connected: false, custodialWallet: null, custodialLoading: false });
     setError(null);
     localStorage.removeItem("hp_wallet_connected");
   }, []);
 
-  // Auto-reconnect on page load if user previously connected
+  const createCustodialWallet = useCallback(async () => {
+    if (!state.address) return;
+    setState(prev => ({ ...prev, custodialLoading: true }));
+    try {
+      await createWallet(state.address);
+      await fetchCustodialWallet(state.address);
+    } catch (err) {
+      setState(prev => ({ ...prev, custodialLoading: false }));
+      throw err;
+    }
+  }, [state.address, fetchCustodialWallet]);
+
+  const refreshCustodialWallet = useCallback(async () => {
+    if (!state.address) return;
+    await fetchCustodialWallet(state.address);
+  }, [state.address, fetchCustodialWallet]);
+
+  // Auto-reconnect on page load
   useEffect(() => {
     const wasConnected = localStorage.getItem("hp_wallet_connected");
     if (!wasConnected) return;
@@ -80,16 +118,17 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         if (!address) return;
         const networkResult = await getNetwork();
         const network = typeof networkResult === "string" ? networkResult : (networkResult as { network: string }).network;
-        setState({ address, network: network === "TESTNET" ? "TESTNET" : "MAINNET", connected: true });
+        setState(prev => ({ ...prev, address, network: network === "TESTNET" ? "TESTNET" : "MAINNET", connected: true }));
+        fetchCustodialWallet(address);
       } catch {
         localStorage.removeItem("hp_wallet_connected");
       }
     })();
-  }, []);
+  }, [fetchCustodialWallet]);
 
   return (
     <WalletContext.Provider
-      value={{ ...state, connect, disconnect, connecting, error }}
+      value={{ ...state, connect, disconnect, connecting, error, createCustodialWallet, refreshCustodialWallet }}
     >
       {children}
     </WalletContext.Provider>

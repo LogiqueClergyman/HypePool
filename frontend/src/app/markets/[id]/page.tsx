@@ -6,16 +6,17 @@ import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
-  ArrowLeft, Clock, Users, TrendingUp, TrendingDown,
-  CheckCircle, XCircle, Loader2, Trophy, Zap, Wallet,
+  ArrowLeft, TrendingUp, TrendingDown,
+  CheckCircle, XCircle, Loader2, Trophy, Zap,
 } from "lucide-react";
 import Link from "next/link";
 import Navbar from "@/components/Navbar";
 import { useWallet } from "@/contexts/WalletContext";
 import {
   getMarket, getMarketBets, placeBet, confirmTx, submitSignedTx,
+  getContentTiers, submitContent,
   stroopsToXlm, xlmToStroops, formatViews, formatDeadline, computePercent,
-  type MarketDetail, type MarketBet,
+  type MarketDetail, type MarketBet, type TiersResponse,
 } from "@/lib/api";
 
 // ── Donut Chart ───────────────────────────────────────────────────────────────
@@ -45,8 +46,7 @@ function DonutChart({ yesPct }: { yesPct: number }) {
 
 // ── Odds Bar ──────────────────────────────────────────────────────────────────
 
-function OddsBar({ yesPct, yesXlm, noXlm }: { yesPct: number; yesXlm: number; noXlm: number }) {
-  const noPct = 100 - yesPct;
+function OddsBar({ yesPct, noPct, yesXlm, noXlm }: { yesPct: number; noPct: number; yesXlm: number; noXlm: number }) {
   return (
     <div className="space-y-3">
       <div>
@@ -139,6 +139,195 @@ function ResolutionBanner({ outcome, threshold }: { outcome: string; threshold: 
         </p>
       </div>
     </motion.div>
+  );
+}
+
+function VideoMarketCreateBox({
+  videoId,
+  userAddress,
+  onCreated,
+}: {
+  videoId: string;
+  userAddress: string | null;
+  onCreated: (marketId: string) => void;
+}) {
+  const { connect, connecting } = useWallet();
+  const [tiersData, setTiersData] = useState<TiersResponse | null>(null);
+  const [selectedTier, setSelectedTier] = useState<number | null>(null);
+  const [selectedWindow, setSelectedWindow] = useState<number>(24);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const windowLabel = tiersData?.window_unit === "minutes" ? "M" : "H";
+
+  const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await getContentTiers(videoUrl);
+        if (cancelled) return;
+        setTiersData(data);
+        setSelectedTier(data.available_tiers[0] ?? null);
+        setSelectedWindow(data.available_windows.includes(24) ? 24 : (data.available_windows[0] ?? 24));
+      } catch (e: unknown) {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : "Failed to load available tiers");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [videoUrl]);
+
+  const existingForSelection = tiersData?.existing_markets.some(
+    (m) => m.threshold === selectedTier && m.window_hours === selectedWindow
+  );
+
+  const handleCreate = async () => {
+    if (!userAddress) {
+      setError("Connect wallet first.");
+      return;
+    }
+    if (!selectedTier) return;
+
+    setSubmitting(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await submitContent(videoUrl, [selectedTier], [selectedWindow], userAddress);
+      const createdId = res.markets_created?.[0]?.id;
+      if (createdId) {
+        setMessage("Market ready. Redirecting...");
+        onCreated(createdId);
+        return;
+      }
+      setMessage("Market request submitted.");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Failed to create market.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="bg-[#0D0D0D] border border-white/8 p-4 space-y-3">
+      <p className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.3em]">
+        CREATE ANOTHER MARKET
+      </p>
+      {loading && <p className="text-[10px] text-muted-foreground">Loading options...</p>}
+      {!loading && tiersData && (
+        <>
+          <div>
+            <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-1.5">Tier</p>
+            <div className="flex flex-wrap gap-1.5">
+              {tiersData.available_tiers.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setSelectedTier(t)}
+                  className={`px-2.5 py-1 text-[8px] font-black uppercase tracking-widest border ${
+                    selectedTier === t
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-white/10 text-muted-foreground hover:text-white hover:border-white/30"
+                  }`}
+                >
+                  {formatViews(t)}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-1.5">Window</p>
+            <div className="flex gap-1.5">
+              {tiersData.available_windows.map((w) => (
+                <button
+                  key={w}
+                  onClick={() => setSelectedWindow(w)}
+                  className={`px-2.5 py-1 text-[8px] font-black uppercase tracking-widest border ${
+                    selectedWindow === w
+                      ? "border-white text-white bg-white/10"
+                      : "border-white/10 text-muted-foreground hover:text-white hover:border-white/30"
+                  }`}
+                >
+                  {w}{windowLabel}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {!!existingForSelection && (
+            <p className="text-[9px] text-yellow-400 font-bold">
+              This tier + window already exists for this video.
+            </p>
+          )}
+
+          {!userAddress ? (
+            <button
+              onClick={connect}
+              disabled={connecting}
+              className="w-full py-2.5 border border-white/15 text-[9px] font-black uppercase tracking-widest text-white hover:border-primary hover:text-primary disabled:opacity-50"
+            >
+              {connecting ? "CONNECTING..." : "CONNECT WALLET"}
+            </button>
+          ) : (
+            <button
+              onClick={handleCreate}
+              disabled={submitting || !selectedTier || !!existingForSelection}
+              className="w-full py-2.5 bg-primary text-black text-[9px] font-black uppercase tracking-widest hover:bg-white disabled:opacity-50"
+            >
+              {submitting ? "CREATING..." : "CREATE MARKET"}
+            </button>
+          )}
+        </>
+      )}
+      {message && <p className="text-[9px] text-primary font-bold">{message}</p>}
+      {error && <p className="text-[9px] text-red-400 font-bold">{error}</p>}
+    </div>
+  );
+}
+
+function RelatedMarketRow({
+  market,
+  currentId,
+  onSelect,
+}: {
+  market: NonNullable<MarketDetail["related_markets"]>[number];
+  currentId: string;
+  onSelect: (marketId: string) => void;
+}) {
+  const active = market.status === "ACTIVE";
+  const hasLiquidity = Number(market.yes_pool) + Number(market.no_pool) > 0;
+  const yesPct = hasLiquidity ? computePercent(market.yes_pool, market.no_pool) : 0;
+  const totalXlm = parseFloat(stroopsToXlm((BigInt(market.yes_pool) + BigInt(market.no_pool)).toString()));
+  const isCurrent = market.id === currentId;
+
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(market.id)}
+      className={`flex items-center justify-between px-3 py-2 border-b border-white/5 last:border-0 hover:bg-white/[0.03] ${
+        isCurrent ? "bg-primary/10" : ""
+      }`}
+    >
+      <div>
+        <p className="text-[10px] font-black text-white">
+          {formatViews(market.threshold)} · {market.window_hours}H
+        </p>
+        <p className="text-[8px] text-muted-foreground font-bold">
+          {active ? formatDeadline(market.deadline) : market.status.replace("_", " ")}
+        </p>
+      </div>
+      <div className="text-right">
+        <p className="text-[9px] font-black text-white italic">{totalXlm.toFixed(2)} XLM</p>
+        <p className="text-[8px] font-bold text-primary">{yesPct}% YES</p>
+      </div>
+    </button>
   );
 }
 
@@ -334,16 +523,30 @@ function BetWidget({ marketId, isActive, minBet }: { marketId: string; isActive:
 
 export default function MarketDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
+  const { address } = useWallet();
+  const [activeMarketId, setActiveMarketId] = useState(id);
   const [market, setMarket] = useState<MarketDetail | null>(null);
   const [bets, setBets] = useState<MarketBet[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([getMarket(id), getMarketBets(id)])
+    Promise.all([getMarket(activeMarketId), getMarketBets(activeMarketId)])
       .then(([m, b]) => { setMarket(m); setBets(b.bets); })
       .catch(() => {})
       .finally(() => setLoading(false));
+  }, [activeMarketId]);
+
+  useEffect(() => {
+    setActiveMarketId(id);
   }, [id]);
+
+  const handleSwitchMarket = (marketId: string) => {
+    if (marketId === activeMarketId) return;
+    setLoading(true);
+    setActiveMarketId(marketId);
+    router.replace(`/markets/${marketId}`);
+  };
 
   if (loading) {
     return (
@@ -365,7 +568,9 @@ export default function MarketDetailPage({ params }: { params: Promise<{ id: str
   const yesXlm = parseFloat(stroopsToXlm(market.yes_pool));
   const noXlm = parseFloat(stroopsToXlm(market.no_pool));
   const totalXlm = yesXlm + noXlm;
-  const yesPct = computePercent(market.yes_pool, market.no_pool);
+  const hasLiquidity = yesXlm + noXlm > 0;
+  const yesPct = hasLiquidity ? computePercent(market.yes_pool, market.no_pool) : 0;
+  const noPct = hasLiquidity ? 100 - yesPct : 0;
   const isActive = market.status === "ACTIVE";
   const isResolved = market.status === "RESOLVED_YES" || market.status === "RESOLVED_NO";
   const threshold = formatViews(market.threshold);
@@ -409,7 +614,7 @@ export default function MarketDetailPage({ params }: { params: Promise<{ id: str
             <div className="bg-[#0D0D0D] border border-white/8 p-6">
               <p className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.35em] mb-5">CURRENT ODDS</p>
               <div className="grid grid-cols-[1fr_auto] gap-6 items-center">
-                <OddsBar yesPct={yesPct} yesXlm={yesXlm} noXlm={noXlm} />
+                <OddsBar yesPct={yesPct} noPct={noPct} yesXlm={yesXlm} noXlm={noXlm} />
                 <div className="w-24 h-24 shrink-0">
                   <DonutChart yesPct={yesPct} />
                 </div>
@@ -486,48 +691,37 @@ export default function MarketDetailPage({ params }: { params: Promise<{ id: str
               </div>
             )}
 
-            {/* Market info */}
-            <div className="bg-[#0D0D0D] border border-white/8 p-5">
-              <p className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.35em] mb-4">MARKET INFO</p>
-              <div className="space-y-3">
-                <div>
-                  <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-1">STATUS</p>
-                  <span className={`text-[9px] font-black tracking-widest px-3 py-1 border ${
-                    isActive ? "border-primary/30 text-primary bg-primary/5"
-                    : market.outcome === "YES" ? "border-primary/30 text-primary bg-primary/10"
-                    : "border-red-400/30 text-red-400 bg-red-400/5"
-                  }`}>
-                    {isActive ? "● LIVE" : `RESOLVED ${market.outcome}`}
-                  </span>
-                </div>
-                <div>
-                  <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-1">DEADLINE</p>
-                  <p className="text-sm font-black text-white italic">
-                    {isActive ? formatDeadline(market.deadline) : new Date(market.deadline).toLocaleDateString()}
+            {/* All markets for this video */}
+            {!!market.related_markets?.length && (
+              <div className="bg-[#0D0D0D] border border-white/8">
+                <div className="px-4 py-3 border-b border-white/5">
+                  <p className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.3em]">
+                    ALL VIDEO MARKETS
                   </p>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-1">VOLUME</p>
-                    <p className="text-sm font-black text-white italic">{totalXlm.toFixed(1)} XLM</p>
-                  </div>
-                  <div>
-                    <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-1">BETTORS</p>
-                    <div className="flex items-center gap-1">
-                      <Users className="w-3 h-3 text-muted-foreground" />
-                      <p className="text-sm font-black text-white italic">{market.total_bettors}</p>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-1">MIN BET</p>
-                    <p className="text-sm font-black text-white italic">{stroopsToXlm(market.min_bet)} XLM</p>
-                  </div>
+                <div>
+                  {market.related_markets.map((m) => (
+                    <RelatedMarketRow
+                      key={m.id}
+                      market={m}
+                      currentId={market.id}
+                      onSelect={handleSwitchMarket}
+                    />
+                  ))}
                 </div>
               </div>
-            </div>
+            )}
+
+            {market.content?.video_id && (
+              <VideoMarketCreateBox
+                videoId={market.content.video_id}
+                userAddress={address}
+                onCreated={handleSwitchMarket}
+              />
+            )}
 
             {/* Bet widget */}
-            <BetWidget marketId={id} isActive={isActive} minBet={market.min_bet} />
+            <BetWidget marketId={activeMarketId} isActive={isActive} minBet={market.min_bet} />
 
             {/* Contract */}
             <div className="bg-[#0D0D0D] border border-white/5 p-4">
