@@ -5,7 +5,7 @@ import { AppError } from '../lib/errors';
 export const validate = (schema: ZodSchema) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      await schema.parseAsync(req.body);
+      req.body = await schema.parseAsync(req.body);
       next();
     } catch (error) {
       if (error instanceof ZodError) {
@@ -21,7 +21,8 @@ export const validate = (schema: ZodSchema) => {
 export const validateQuery = (schema: ZodSchema) => {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      await schema.parseAsync(req.query);
+      const parsed = await schema.parseAsync(req.query);
+      Object.defineProperty(req, 'query', { value: parsed, writable: true, configurable: true, enumerable: true });
       next();
     } catch (error) {
       if (error instanceof ZodError) {

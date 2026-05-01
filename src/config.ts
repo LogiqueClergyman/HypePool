@@ -1,8 +1,18 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+const appMode = (process.env.APP_MODE || 'testmode').toLowerCase();
+const marketWindowUnit =
+  (process.env.MARKET_WINDOW_UNIT ||
+    (appMode === 'mainnet' ? 'hours' : 'minutes')).toLowerCase();
+
 export const config = {
+  appMode,
   port: parseInt(process.env.PORT || '3001'),
+  corsOrigin: process.env.CORS_ORIGIN || '*',
+  market: {
+    windowUnit: marketWindowUnit === 'hours' ? 'hours' : 'minutes',
+  },
   database: {
     url: process.env.DATABASE_URL!,
   },

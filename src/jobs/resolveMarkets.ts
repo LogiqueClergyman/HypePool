@@ -1,7 +1,7 @@
 import { prisma } from '../lib/prisma';
 import { registry } from '../providers/registry';
-import { StellarService } from '../services/stellar';
-import { config } from '../config';
+import { getStellarService } from '../services/stellar';
+import { logger } from '../lib/logger';
 
 export async function resolveMarkets(): Promise<void> {
   try {
@@ -12,12 +12,14 @@ export async function resolveMarkets(): Promise<void> {
           { status: { in: ['RESOLVED_YES', 'RESOLVED_NO'] }, settledAt: null }
         ]
       },
-      include: { content: true }
+      include: { content: true },
+      take: 20,
+      orderBy: { deadline: 'asc' },
     });
 
     if (marketsToResolve.length === 0) return;
 
-    const stellarService = new StellarService(config.stellar.rpcUrl, config.stellar.networkPassphrase, config.stellar.oracleSecret, config.stellar.factoryAddress);
+    const stellarService = getStellarService();
 
     for (const market of marketsToResolve) {
       if (market.status === 'ACTIVE') {
@@ -46,7 +48,7 @@ export async function resolveMarkets(): Promise<void> {
           market.status = `RESOLVED_${result.outcome.toUpperCase()}` as any;
           market.outcome = result.outcome.toUpperCase() as any;
         } catch (e) {
-          console.error(`Failed to execute on-chain resolution for market ${market.id}:`, e);
+          logger.error({ err: e, marketId: market.id }, 'Failed to execute on-chain resolution');
           continue; // Retry on next cron loop
         }
       }
@@ -57,18 +59,22 @@ export async function resolveMarkets(): Promise<void> {
         
         const winningBets = await prisma.bet.findMany({
           where: { marketId: market.id, side: market.outcome! as any, claimed: false },
-          include: { user: true }
+          include: { user: { include: { custodialWallet: true } } },
+          take: 25,
+          orderBy: { createdAt: 'asc' },
         });
 
         for (const bet of winningBets) {
           try {
-            const { txHash, payout } = await stellarService.claimForUser(market.contractAddress, bet.user.stellarAddress);
+            // Bets placed via custodial flow are executed from custodial address, not owner address.
+            const claimantAddress = bet.user.custodialWallet?.custodialAddress ?? bet.user.stellarAddress;
+            const { txHash, payout } = await stellarService.claimForUser(market.contractAddress, claimantAddress);
             await prisma.bet.update({
               where: { id: bet.id },
               data: { claimed: true, claimTxHash: txHash, payout }
             });
           } catch (e) {
-            console.error(`Failed to claim for user ${bet.user.stellarAddress} on market ${market.id}:`, e);
+            logger.error({ err: e, marketId: market.id, user: bet.user.stellarAddress }, 'Failed to claim payout');
             allSuccess = false;
           }
         }
@@ -82,6 +88,6 @@ export async function resolveMarkets(): Promise<void> {
       }
     }
   } catch (error) {
-    console.error('Scheduler resolution failed:', error);
+    logger.error({ err: error }, 'Scheduler resolution failed');
   }
 }

@@ -2,7 +2,6 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { validateQuery } from '../middleware/validate';
 import { prisma } from '../lib/prisma';
-import { AppError } from '../lib/errors';
 
 const router = Router();
 
@@ -66,36 +65,46 @@ router.get('/:address/bets', validateQuery(betsQuerySchema), async (req: Request
     const user = await prisma.user.findUnique({ where: { stellarAddress: address } });
     if (!user) return res.status(200).json({ bets: [], total: 0, page, pages: 0 });
 
-    let filter: any = { userId: user.id };
-    
-    if (status === 'active') {
-      filter.market = { status: 'ACTIVE' };
-    } else if (status === 'won') {
-      filter.claimed = true;
-      filter.payout = { gt: 0 };
-    } else if (status === 'lost') {
-      filter.market = { status: { in: ['RESOLVED_YES', 'RESOLVED_NO'] } };
-      // Can't easily filter bet.side != market.outcome deeply in basic prisma without raw query
-      // but we resolve it below or skip perfect filtering in this basic map
+    let finalBets: any[];
+    let total: number;
+
+    if (status === 'lost') {
+      // Need field-to-field comparison (side != outcome) — fetch resolved then filter client-side
+      const allResolved = await prisma.bet.findMany({
+        where: {
+          userId: user.id,
+          market: { status: { in: ['RESOLVED_YES', 'RESOLVED_NO'] } },
+        },
+        include: { market: { include: { content: true } } },
+        orderBy: { createdAt: 'desc' },
+      });
+      const lost = allResolved.filter(b => b.side !== b.market.outcome);
+      total = lost.length;
+      finalBets = lost.slice((page - 1) * limit, page * limit);
+    } else {
+      const filter: any = { userId: user.id };
+      if (status === 'active') {
+        filter.market = { status: 'ACTIVE' };
+      } else if (status === 'won') {
+        filter.claimed = true;
+        filter.payout = { gt: 0n };
+      }
+      const [bets, count] = await Promise.all([
+        prisma.bet.findMany({
+          where: filter,
+          include: { market: { include: { content: true } } },
+          skip: (page - 1) * limit,
+          take: limit,
+          orderBy: { createdAt: 'desc' },
+        }),
+        prisma.bet.count({ where: filter }),
+      ]);
+      finalBets = bets;
+      total = count;
     }
 
-    const bets = await prisma.bet.findMany({
-      where: filter,
-      include: { market: { include: { content: true } } },
-      skip: (page - 1) * limit,
-      take: limit,
-      orderBy: { createdAt: 'desc' }
-    });
-
-    const filteredBets = bets.filter(b => {
-      if (status === 'lost') {
-        return b.side !== b.market.outcome;
-      }
-      return true;
-    });
-
     return res.status(200).json({
-      bets: filteredBets.map(b => ({
+      bets: finalBets.map((b: any) => ({
         id: b.id,
         market: {
           id: b.marketId,
@@ -112,9 +121,9 @@ router.get('/:address/bets', validateQuery(betsQuerySchema), async (req: Request
         claimed: b.claimed,
         placed_at: b.createdAt.toISOString()
       })),
-      total: filteredBets.length,
+      total,
       page,
-      pages: Math.ceil(filteredBets.length / limit)
+      pages: Math.ceil(total / limit)
     });
   } catch (error) {
     next(error);

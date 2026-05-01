@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { validate } from '../middleware/validate';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../lib/errors';
-import { rpc } from '@stellar/stellar-sdk';
+import { rpc, scValToNative } from '@stellar/stellar-sdk';
 import { config } from '../config';
 
 const router = Router();
@@ -30,13 +30,14 @@ router.post('/', validate(confirmSchema), async (req: Request, res: Response, ne
     }
 
     const server = new rpc.Server(config.stellar.rpcUrl);
-    
+    let txResponse: rpc.Api.GetTransactionResponse;
+
     try {
-      const txResponse = await server.getTransaction(tx_hash);
+      txResponse = await server.getTransaction(tx_hash);
       if (txResponse.status !== 'SUCCESS') {
         throw new Error('Not success');
       }
-    } catch(e) {
+    } catch {
       throw new AppError(400, 'tx_not_confirmed', 'Transaction not confirmed on chain');
     }
 
@@ -59,13 +60,35 @@ router.post('/', validate(confirmSchema), async (req: Request, res: Response, ne
         }
       });
 
-      // Update pool amounts is handled via syncState job eventually or here. 
+      await prisma.market.update({
+        where: { id: meta.market_id },
+        data: {
+          ...(meta.side === 'yes'
+            ? { yesPool: { increment: BigInt(meta.amount) } }
+            : { noPool: { increment: BigInt(meta.amount) } }),
+          totalBettors: { increment: 1 },
+        }
+      });
+
     } else if (interaction.type === 'MARKET_CREATE') {
       const meta = interaction.metadata as any;
-      
-      // Assume we extract onchain id and address. Placeholder.
-      const onchainId = Math.floor(Math.random() * 1000); 
-      const contractAddress = "CA" + Math.random().toString().substring(2, 54);
+
+      // Parse (u64, Address) tuple returned by factory.create_market()
+      let onchainId: number;
+      let contractAddress: string;
+
+      const retval = (txResponse as any).returnValue;
+      if (retval) {
+        try {
+          const parsed = scValToNative(retval) as [bigint, string];
+          onchainId = Number(parsed[0]);
+          contractAddress = parsed[1];
+        } catch {
+          throw new AppError(400, 'tx_parse_failed', 'Could not parse market creation result from transaction');
+        }
+      } else {
+        throw new AppError(400, 'tx_no_return', 'Transaction did not return expected market data');
+      }
 
       await prisma.market.create({
         data: {
@@ -76,7 +99,7 @@ router.post('/', validate(confirmSchema), async (req: Request, res: Response, ne
           windowHours: meta.window,
           deadline: new Date(meta.deadline * 1000),
           resolutionDeadline: new Date(meta.resolutionDeadline * 1000),
-          minBet: BigInt(1000000),
+          minBet: BigInt(1_000_000),
         }
       });
     }

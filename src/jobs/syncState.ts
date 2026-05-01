@@ -1,21 +1,22 @@
 import { prisma } from '../lib/prisma';
-import { StellarService } from '../services/stellar';
-import { config } from '../config';
+import { getStellarService } from '../services/stellar';
+import { logger } from '../lib/logger';
 
 export async function syncState(): Promise<void> {
   try {
     const activeMarkets = await prisma.market.findMany({
-      where: { status: 'ACTIVE' }
+      where: { status: 'ACTIVE', contractAddress: { not: '' } },
+      take: 10,
+      orderBy: { lastSyncedAt: 'asc' },
     });
 
     if (activeMarkets.length === 0) return;
 
-    const stellarService = new StellarService(config.stellar.rpcUrl, config.stellar.networkPassphrase, config.stellar.oracleSecret, config.stellar.factoryAddress);
+    const stellarService = getStellarService();
 
     for (const market of activeMarkets) {
       try {
         const state = await stellarService.getMarketState(market.contractAddress);
-        
         await prisma.market.update({
           where: { id: market.id },
           data: {
@@ -24,13 +25,15 @@ export async function syncState(): Promise<void> {
             yesWeightedPool: state.yesWeightedPool,
             noWeightedPool: state.noWeightedPool,
             totalBettors: state.totalBettors,
+            lastSyncedAt: new Date(),
           }
         });
       } catch (e) {
-        console.error(`Failed to sync state for market ${market.id}`, e);
+        logger.error({ err: e, marketId: market.id }, 'Failed to sync state for market');
       }
+      await new Promise(r => setTimeout(r, 500));
     }
   } catch (error) {
-    console.error('State sync job error:', error);
+    logger.error({ err: error }, 'State sync job error');
   }
 }

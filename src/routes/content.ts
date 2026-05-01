@@ -5,13 +5,24 @@ import { registry } from '../providers/registry';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../lib/errors';
 import { TierService } from '../services/tiers';
-import { StellarService } from '../services/stellar';
+import { getStellarService } from '../services/stellar';
 import { WalletService } from '../services/wallet';
 import { config } from '../config';
-import { TIME_WINDOWS, DEFAULT_MIN_BET, PLATFORM_FEE_BPS, RESOLUTION_GRACE_HOURS } from '../constants';
-import { rpc, Address } from '@stellar/stellar-sdk';
+import { TIME_WINDOWS, DEFAULT_MIN_BET, PLATFORM_FEE_BPS, RESOLUTION_GRACE_HOURS, MAX_TIERS } from '../constants';
+import { rpc, Address, Keypair } from '@stellar/stellar-sdk';
+import { logger } from '../lib/logger';
 
 const router = Router();
+const MAX_VIDEO_AGE_HOURS = Number(process.env.MAX_VIDEO_AGE_HOURS || '72');
+const WINDOW_UNIT_SECONDS = config.market.windowUnit === 'minutes' ? 60 : 3600;
+
+function assertVideoIsRecent(publishedAt: Date): void {
+  const videoAgeMs = Date.now() - publishedAt.getTime();
+  const maxAgeMs = MAX_VIDEO_AGE_HOURS * 60 * 60 * 1000;
+  if (videoAgeMs > maxAgeMs) {
+    throw new AppError(400, 'video_too_old', `Only videos published within the last ${MAX_VIDEO_AGE_HOURS} hours are eligible`);
+  }
+}
 
 const tiersSchema = z.object({
   url: z.string().url(),
@@ -34,6 +45,7 @@ router.post('/tiers', validate(tiersSchema), async (req: Request, res: Response,
     
     const details = await provider.getContentDetails(externalId);
     if (!details) throw new AppError(404, 'content_not_found', 'Content not found or private');
+    assertVideoIsRecent(details.publishedAt);
 
     const available_tiers = TierService.computeTiers(details.currentViews);
     const existing_markets = content?.markets.map(m => ({
@@ -52,6 +64,7 @@ router.post('/tiers', validate(tiersSchema), async (req: Request, res: Response,
       current_views: details.currentViews,
       available_tiers,
       available_windows: TIME_WINDOWS,
+      window_unit: config.market.windowUnit,
       existing_markets
     });
   } catch (error) {
@@ -61,9 +74,9 @@ router.post('/tiers', validate(tiersSchema), async (req: Request, res: Response,
 
 const submitSchema = z.object({
   url: z.string().url(),
-  tiers: z.array(z.number().int().positive()).min(1).max(4),
-  windows: z.array(z.coerce.number().int().positive()).min(1).max(4),
-  user_address: z.string().min(56).max(56),
+  tiers: z.array(z.coerce.number().int().positive()).min(1).max(MAX_TIERS),
+  windows: z.array(z.coerce.number().int().positive()).min(1).max(TIME_WINDOWS.length),
+  user_address: z.string().trim().min(56).max(69),
 });
 
 router.post('/submit', validate(submitSchema), async (req: Request, res: Response, next: NextFunction) => {
@@ -78,9 +91,13 @@ router.post('/submit', validate(submitSchema), async (req: Request, res: Respons
 
     const details = await provider.getContentDetails(externalId);
     if (!details) throw new AppError(404, 'content_not_found', 'Content not found or private');
+    assertVideoIsRecent(details.publishedAt);
 
     if (!TierService.validateTiers(tiers)) {
       throw new AppError(400, 'invalid_tier', 'Tier is not from the valid ladder');
+    }
+    if (!windows.every((w: number) => TIME_WINDOWS.includes(w))) {
+      throw new AppError(400, 'invalid_window', 'Window is not in the configured time windows');
     }
 
     const user = await prisma.user.upsert({
@@ -90,7 +107,7 @@ router.post('/submit', validate(submitSchema), async (req: Request, res: Respons
       include: { custodialWallet: true }
     });
 
-    const stellarService = new StellarService(config.stellar.rpcUrl, config.stellar.networkPassphrase, config.stellar.oracleSecret, config.stellar.factoryAddress);
+    const stellarService = getStellarService();
 
     let contentRecord = await prisma.content.upsert({
       where: { platform_externalId: { platform: details.platform, externalId: details.externalId } },
@@ -115,26 +132,39 @@ router.post('/submit', validate(submitSchema), async (req: Request, res: Respons
       const marketsCreated = [];
       const txHashes = [];
 
-      console.log("[CONTENT_SUBMIT] Starting market creation loop, tiers:", tiers, "windows:", windows);
       for (const tier of tiers) {
         for (const window of windows) {
-          console.log(`[CONTENT_SUBMIT] Processing tier=${tier}, window=${window}`);
           const now = Math.floor(Date.now() / 1000);
-          const deadline = now + (window * 3600);
-          const resolutionDeadline = deadline + (RESOLUTION_GRACE_HOURS * 3600);
+          const deadline = now + (window * WINDOW_UNIT_SECONDS);
+          const resolutionDeadline = deadline + (RESOLUTION_GRACE_HOURS * WINDOW_UNIT_SECONDS);
 
           let txHash: string | null = null;
           let txResponse: any = null;
-          let onchainId = Math.floor(Math.random() * 1000);
-          let contractAddress = config.stellar.tokenAddress;
+          let onchainId = await stellarService.getFactoryMarketCount(userKeypair.publicKey());
+          let contractAddress = '';
 
           try {
-             // Validate duplicate DB early
-            console.log(`[CONTENT_SUBMIT] Checking for duplicate: contentId=${contentRecord.id}, tier=${tier}, window=${window}`);
-            const exists = await prisma.market.findUnique({
+            let exists = await prisma.market.findUnique({
               where: { contentId_threshold_windowHours: { contentId: contentRecord.id, threshold: BigInt(tier), windowHours: window } }
             });
-            console.log(`[CONTENT_SUBMIT] Duplicate check result: exists=${exists ? 'YES (will return existing)' : 'NO (proceeding)'}`);
+            if (exists) {
+              try {
+                const canonicalAddress = await stellarService.getFactoryMarketAddress(userKeypair.publicKey(), exists.onchainId);
+                if (exists.contractAddress !== canonicalAddress) {
+                  await prisma.market.update({
+                    where: { id: exists.id },
+                    data: { contractAddress: canonicalAddress }
+                  });
+                  exists.contractAddress = canonicalAddress;
+                }
+              } catch (reconcileError) {
+                logger.warn({ err: reconcileError, marketId: exists.id }, 'Existing market has invalid onchain reference; recreating');
+                await prisma.market.delete({ where: { id: exists.id } });
+                exists = null;
+                // Continue normal create path below.
+              }
+            }
+
             if (exists) {
               // Market already exists - include it in response so test can proceed
               marketsCreated.push({
@@ -149,7 +179,6 @@ router.post('/submit', validate(submitSchema), async (req: Request, res: Respons
               continue; // skip to next iteration
             }
 
-            console.log("[CONTENT_SUBMIT] Building market config...");
             const marketConfig = {
               contentUrl: details.url,
               contentType: 0, // 0 for YouTube according to enums
@@ -168,81 +197,12 @@ router.post('/submit', validate(submitSchema), async (req: Request, res: Respons
             marketConfig.oracleAddress = Keypair.fromSecret(config.stellar.oracleSecret).publicKey();
 
             const xdr = await stellarService.buildCreateMarketTx(userKeypair.publicKey(), marketConfig);
-            console.log("[CONTENT_SUBMIT] Built XDR, calling signAndSubmit...");
             const result = await stellarService.signAndSubmit(xdr, userKeypair);
-            console.log("[CONTENT_SUBMIT] Got result:", result ? "yes" : "null", "txHash:", result?.txHash, "txResponse:", result?.txResponse ? "yes" : "null");
             txHash = result.txHash;
             txResponse = result.txResponse;
             txHashes.push(txHash);
-            
-            // Parse returnValue from create_market — returns (u64, Address)
-            console.log("[CONTENT_SUBMIT] Parsing txResponse, has resultMetaXdr:", !!(txResponse as any).resultMetaXdr);
-            if ((txResponse as any).resultMetaXdr) {
-              try {
-                const meta = (txResponse as any).resultMetaXdr;
-                console.log("[CONTENT_SUBMIT] meta type:", meta.constructor?.name || typeof meta);
-                
-                // Try to access via switch() method
-                try {
-                  const switchVal = meta.switch && meta.switch();
-                  console.log("[CONTENT_SUBMIT] meta.switch():", switchVal);
-                  if (switchVal && switchVal.value === 1) { // v3
-                    const v3 = meta.v3 && meta.v3();
-                    console.log("[CONTENT_SUBMIT] Got v3:", v3 ? "yes" : "no");
-                    if (v3 && v3.scpMeta) {
-                      const scMeta = v3.scpMeta();
-                      console.log("[CONTENT_SUBMIT] scMeta:", scMeta ? "present" : "null");
-                    }
-                  }
-                } catch (e) {
-                  console.log("[CONTENT_SUBMIT] Error accessing switch:", e);
-                }
-                
-                // Also try the sorobanMeta method
-                try {
-                  const sorobanMeta = meta.sorobanMeta && meta.sorobanMeta();
-                  console.log("[CONTENT_SUBMIT] sorobanMeta:", sorobanMeta ? "present" : "null");
-                } catch (e) {
-                  console.log("[CONTENT_SUBMIT] Error accessing sorobanMeta:", e);
-                }
-                
-                // Try accessing returnValue directly from meta
-                try {
-                  const retval = meta.returnValue && meta.returnValue();
-                  console.log("[CONTENT_SUBMIT] meta.returnValue():", retval ? "present" : "null");
-                  
-                  if (retval) {
-                    console.log("[CONTENT_SUBMIT] retval.switch:", retval.switch ? "present" : "null", "switch().value:", retval.switch ? retval.switch().value : "n/a");
-                    // retval should be scvVec([scvU64, scvAddress])
-                    if (retval.switch && retval.switch().value === 16) { // scvVec
-                      const arr = retval.vec();
-                      console.log("[CONTENT_SUBMIT] Parsed vec with length:", arr.length);
-                      if (arr.length >= 2) {
-                        const idScv = arr[0];
-                        const addrScv = arr[1];
-                        console.log("[CONTENT_SUBMIT] idScv.switch().value:", idScv.switch().value, "addrScv.switch().value:", addrScv.switch().value);
-                        // Parse u64
-                        if (idScv.switch && idScv.switch().value === 5) { // scvU64
-                          const lo = Number(idScv.u64().low);
-                          onchainId = lo;
-                          console.log("[CONTENT_SUBMIT] Parsed onchainId:", lo);
-                        }
-                        // Parse Address
-                        if (addrScv.switch && addrScv.switch().value === 18) { // scvAddress
-                          const addr = Address.fromScVal(addrScv);
-                          contractAddress = addr.toString();
-                          console.log("[CONTENT_SUBMIT] Parsed contractAddress:", contractAddress);
-                        }
-                      }
-                    }
-                  }
-                } catch (e) {
-                  console.log("[CONTENT_SUBMIT] Error accessing returnValue:", e);
-                }
-              } catch (e) {
-                console.warn("[CONTENT_SUBMIT] Failed to parse returnValue:", e);
-              }
-            }
+            contractAddress = await stellarService.getFactoryMarketAddress(userKeypair.publicKey(), onchainId);
+            logger.info({ txHash, contractAddress, onchainId }, 'Market created on-chain');
 
             const market = await prisma.market.create({
               data: {
@@ -267,32 +227,12 @@ router.post('/submit', validate(submitSchema), async (req: Request, res: Respons
               tx_hash: txHash,
             });
           } catch(e) {
-             console.error("Failed to create market:", e);
-             throw e;
-          } finally {
-            console.log("[CREATE_MARKET] onchainId:", onchainId, "contractAddress:", contractAddress, "txHash:", txHash);
-            console.log("[CREATE_MARKET_DEBUG] txResponse type:", txResponse ? typeof txResponse : null);
-            if (txResponse && (txResponse as any).resultMetaXdr) {
-              try {
-                const meta = (txResponse as any).resultMetaXdr;
-                console.log("[CREATE_MARKET_DEBUG] meta type:", typeof meta);
-                const sorobanMeta = meta.sorobanMeta && meta.sorobanMeta();
-                console.log("[CREATE_MARKET_DEBUG] sorobanMeta:", sorobanMeta ? "exists" : "null");
-                if (sorobanMeta && sorobanMeta.returnValue) {
-                  const rv = sorobanMeta.returnValue();
-                  console.log("[CREATE_MARKET_DEBUG] returnValue type:", rv ? typeof rv : null);
-                }
-              } catch (e) {
-                console.warn("[CREATE_MARKET_DEBUG] error parsing:", e);
-              }
-            } else {
-              console.log("[CREATE_MARKET_DEBUG] no resultMetaXdr found");
-            }
+            logger.error({ err: e, tier, window }, 'Failed to create market');
+            throw e;
           }
         }
       }
 
-      console.log("[CONTENT_SUBMIT] Returning response, marketsCreated count:", marketsCreated.length);
       return res.status(201).json({
         content_id: contentRecord.id,
         markets_created: marketsCreated,
@@ -305,8 +245,8 @@ router.post('/submit', validate(submitSchema), async (req: Request, res: Respons
       for (const tier of tiers) {
         for (const window of windows) {
           const now = Math.floor(Date.now() / 1000);
-          const deadline = now + (window * 3600);
-          const resolutionDeadline = deadline + (RESOLUTION_GRACE_HOURS * 3600);
+          const deadline = now + (window * WINDOW_UNIT_SECONDS);
+          const resolutionDeadline = deadline + (RESOLUTION_GRACE_HOURS * WINDOW_UNIT_SECONDS);
 
           const marketConfig = {
             contentUrl: details.url,
@@ -354,6 +294,4 @@ router.post('/submit', validate(submitSchema), async (req: Request, res: Respons
     next(error);
   }
 });
-import { Keypair } from '@stellar/stellar-sdk';
-
 export default router;
