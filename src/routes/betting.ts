@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { validate } from '../middleware/validate';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../lib/errors';
-import { StellarService } from '../services/stellar';
+import { getStellarService } from '../services/stellar';
 import { WalletService } from '../services/wallet';
 import { config } from '../config';
 
@@ -12,7 +12,7 @@ const router = Router();
 const betSchema = z.object({
   side: z.enum(['yes', 'no']),
   amount: z.number().int().positive(),
-  user_address: z.string().min(56).max(56),
+  user_address: z.string().trim().min(56).max(69),
 });
 
 router.post('/:id/bet', validate(betSchema), async (req: Request, res: Response, next: NextFunction) => {
@@ -35,15 +35,16 @@ router.post('/:id/bet', validate(betSchema), async (req: Request, res: Response,
       include: { custodialWallet: true }
     });
 
-    const stellarService = new StellarService(config.stellar.rpcUrl, config.stellar.networkPassphrase, config.stellar.oracleSecret, config.stellar.factoryAddress);
+    const stellarService = getStellarService();
 
     if (user.custodialWallet) {
       const walletService = new WalletService(config.encryption.masterKey);
       const userKeypair = walletService.getKeypair(user.custodialWallet.encryptedKey);
+      const bettorAddress = userKeypair.publicKey();
 
       const xdr = side === 'yes' 
-        ? await stellarService.buildBuyYesTx(market.contractAddress, user_address, BigInt(amount), userKeypair.publicKey())
-        : await stellarService.buildBuyNoTx(market.contractAddress, user_address, BigInt(amount), userKeypair.publicKey());
+        ? await stellarService.buildBuyYesTx(market.contractAddress, bettorAddress, BigInt(amount), bettorAddress)
+        : await stellarService.buildBuyNoTx(market.contractAddress, bettorAddress, BigInt(amount), bettorAddress);
 
       const { txHash } = await stellarService.signAndSubmit(xdr, userKeypair);
 

@@ -9,7 +9,7 @@ import { config } from '../config';
 const router = Router();
 
 const createSchema = z.object({
-  user_address: z.string().min(56).max(56)
+  user_address: z.string().trim().min(56).max(69)
 });
 
 router.post('/create', validate(createSchema), async (req: Request, res: Response, next: NextFunction) => {
@@ -23,7 +23,9 @@ router.post('/create', validate(createSchema), async (req: Request, res: Respons
     });
 
     const existing = await prisma.custodialWallet.findUnique({ where: { userId: user.id } });
-    if (existing) throw new AppError(409, 'wallet_exists', 'User already has a custodial wallet');
+    if (existing) {
+      return res.status(200).json({ custodial_address: existing.custodialAddress, status: 'active' });
+    }
 
     const walletService = new WalletService(config.encryption.masterKey);
     const keypair = walletService.generateKeypair();
@@ -55,10 +57,22 @@ router.post('/create', validate(createSchema), async (req: Request, res: Respons
 router.get('/:address', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const address = req.params.address as string;
-    const wallet = await prisma.custodialWallet.findUnique({
+
+    // Look up by custodial address first, then fall back to owner address
+    let wallet = await prisma.custodialWallet.findUnique({
       where: { custodialAddress: address },
       include: { user: true }
     });
+
+    if (!wallet) {
+      const user = await prisma.user.findUnique({ where: { stellarAddress: address } });
+      if (user) {
+        wallet = await prisma.custodialWallet.findUnique({
+          where: { userId: user.id },
+          include: { user: true }
+        });
+      }
+    }
 
     if (!wallet) throw new AppError(404, 'wallet_not_found', 'Wallet not found');
 
@@ -77,9 +91,9 @@ router.get('/:address', async (req: Request, res: Response, next: NextFunction) 
 });
 
 const withdrawSchema = z.object({
-  custodial_address: z.string().min(56).max(56),
+  custodial_address: z.string().trim().min(56).max(69),
   amount: z.number().int().positive(),
-  destination: z.string().min(56).max(56)
+  destination: z.string().trim().min(56).max(69)
 });
 
 router.post('/withdraw', validate(withdrawSchema), async (req: Request, res: Response, next: NextFunction) => {

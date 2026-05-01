@@ -1,0 +1,131 @@
+@import "tailwindcss";
+
+:root {
+  --background: #000000;
+  --foreground: #ffffff;
+
+  --primary: #00FF85;
+  --primary-foreground: #000000;
+
+  --secondary: #111111;
+  --secondary-foreground: #ffffff;
+
+  --muted: #0A0A0A;
+  --muted-foreground: #666666;
+
+  --accent: #00FF85;
+  --accent-foreground: #000000;
+
+  --border: #1A1A1A;
+  --input: #111111;
+  --ring: #00FF85;
+
+  --radius: 0rem;
+}
+
+@theme {
+  --font-sans: "Inter", "Outfit", sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-secondary: var(--secondary);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --radius-xl: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-md: var(--radius);
+}
+
+@layer base {
+  body {
+    @apply bg-background text-foreground selection:bg-primary selection:text-black antialiased;
+  }
+}
+
+/* ── Utility Classes ──────────────────────────────── */
+
+.gradient-text {
+  @apply bg-clip-text text-transparent bg-gradient-to-br from-white via-white to-primary/50;
+}
+
+.neon-glow {
+  box-shadow: 0 0 24px -6px rgba(0, 255, 133, 0.5);
+}
+
+.neon-border {
+  border-color: rgba(0, 255, 133, 0.3);
+  box-shadow: inset 0 0 15px -10px rgba(0, 255, 133, 0.3), 0 0 15px -10px rgba(0, 255, 133, 0.3);
+}
+
+/* ── Scrollbar ──────────────────────────────────── */
+::-webkit-scrollbar { width: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #222; }
+::-webkit-scrollbar-thumb:hover { background: #00FF85; }
+
+/* ── Keyframes ──────────────────────────────────── */
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  33%       { transform: translateY(-14px) rotate(0.5deg); }
+  66%       { transform: translateY(-6px) rotate(-0.5deg); }
+}
+
+@keyframes float-reverse {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(12px); }
+}
+
+@keyframes orb-drift {
+  0%   { transform: translate(0, 0) scale(1); opacity: 0.5; }
+  25%  { transform: translate(40px, -30px) scale(1.08); opacity: 0.7; }
+  50%  { transform: translate(10px, 50px) scale(0.95); opacity: 0.4; }
+  75%  { transform: translate(-30px, 20px) scale(1.05); opacity: 0.65; }
+  100% { transform: translate(0, 0) scale(1); opacity: 0.5; }
+}
+
+@keyframes orb-drift-2 {
+  0%   { transform: translate(0, 0) scale(1); }
+  33%  { transform: translate(-60px, 40px) scale(1.1); }
+  66%  { transform: translate(30px, -50px) scale(0.92); }
+  100% { transform: translate(0, 0) scale(1); }
+}
+
+@keyframes shimmer-sweep {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes bar-fill {
+  from { width: 0%; }
+}
+
+@keyframes pulse-ring {
+  0%   { transform: scale(1); opacity: 0.6; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+@keyframes scanline-pass {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes ticker {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+/* ── Applied animations ─────────────────────────── */
+
+.animate-float         { animation: float 6s ease-in-out infinite; }
+.animate-float-reverse { animation: float-reverse 5s ease-in-out infinite; }
+.animate-orb-drift     { animation: orb-drift 20s ease-in-out infinite; }
+.animate-orb-drift-2   { animation: orb-drift-2 26s ease-in-out infinite; }
+.animate-spin-slow     { animation: spin-slow 20s linear infinite; }
+.animate-ticker        { animation: ticker 30s linear infinite; }

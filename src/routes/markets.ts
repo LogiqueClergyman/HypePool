@@ -7,18 +7,18 @@ import { AppError } from '../lib/errors';
 const router = Router();
 
 const marketsQuerySchema = z.object({
-  status: z.enum(['active', 'resolved_yes', 'resolved_no', 'expired']).optional().default('active'),
+  status: z.string().optional().default('ACTIVE').transform(v => v.toUpperCase()),
   content_id: z.string().uuid().optional(),
   sort: z.enum(['volume', 'newest', 'closing_soon']).optional().default('volume'),
-  page: z.string().regex(/^\d+$/).transform(Number).optional().default(1),
-  limit: z.string().regex(/^\d+$/).transform(Number).optional().default(20),
+  page: z.coerce.number().int().positive().optional().default(1),
+  limit: z.coerce.number().int().positive().max(50).optional().default(20),
 });
 
 router.get('/', validateQuery(marketsQuerySchema), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { status, content_id, sort, page, limit } = req.query as any;
 
-    let where: any = { status: status.toUpperCase() };
+    let where: any = { status };
     if (content_id) {
       where.contentId = content_id;
     }
@@ -109,6 +109,36 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       outcome: market.outcome,
       resolved_at: market.resolvedAt?.toISOString() || null,
       created_at: market.createdAt.toISOString()
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id/bets', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const market = await prisma.market.findUnique({ where: { id: req.params.id as string } });
+    if (!market) throw new AppError(404, 'market_not_found', 'Market not found');
+
+    const bets = await prisma.bet.findMany({
+      where: { marketId: req.params.id as string },
+      include: { user: true },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    return res.status(200).json({
+      bets: bets.map(b => ({
+        id: b.id,
+        side: b.side,
+        amount: b.amount.toString(),
+        payout: b.payout?.toString() || null,
+        claimed: b.claimed,
+        tx_hash: b.txHash,
+        user_address: b.user.stellarAddress,
+        placed_at: b.createdAt.toISOString(),
+      })),
+      total: bets.length,
     });
   } catch (error) {
     next(error);

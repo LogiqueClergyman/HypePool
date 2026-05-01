@@ -1,7 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { registry } from '../providers/registry';
-import { StellarService } from '../services/stellar';
-import { config } from '../config';
+import { getStellarService } from '../services/stellar';
 
 export async function resolveMarkets(): Promise<void> {
   try {
@@ -12,12 +11,14 @@ export async function resolveMarkets(): Promise<void> {
           { status: { in: ['RESOLVED_YES', 'RESOLVED_NO'] }, settledAt: null }
         ]
       },
-      include: { content: true }
+      include: { content: true },
+      take: 20,
+      orderBy: { deadline: 'asc' },
     });
 
     if (marketsToResolve.length === 0) return;
 
-    const stellarService = new StellarService(config.stellar.rpcUrl, config.stellar.networkPassphrase, config.stellar.oracleSecret, config.stellar.factoryAddress);
+    const stellarService = getStellarService();
 
     for (const market of marketsToResolve) {
       if (market.status === 'ACTIVE') {
@@ -57,7 +58,9 @@ export async function resolveMarkets(): Promise<void> {
         
         const winningBets = await prisma.bet.findMany({
           where: { marketId: market.id, side: market.outcome! as any, claimed: false },
-          include: { user: true }
+          include: { user: true },
+          take: 25,
+          orderBy: { createdAt: 'asc' },
         });
 
         for (const bet of winningBets) {

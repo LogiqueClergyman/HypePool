@@ -1,0 +1,58 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Pool {
+  id              String         @id @default(cuid())
+  platform        String
+  videoId         String
+  videoUrl        String
+  title           String
+  creator         String
+  thumbnailUrl    String?
+  viewsAtCreation Int            @default(0)
+  targetViews     Int
+  deadline        DateTime
+  totalStaked     Float          @default(0)
+  status          String         @default("active")
+  yesPercent      Int            @default(74)
+  actualViews     Int?
+  settlementTx    String?
+  creatorWallet   String?
+  stakes          Stake[]
+  snapshots       ViewSnapshot[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
+model Stake {
+  id               String   @id @default(cuid())
+  poolId           String
+  pool             Pool     @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  walletAddress    String   @default("anonymous")
+  amount           Float
+  position         String   @default("yes")
+  rangeMin         Float?
+  rangeMax         Float?
+  multiplierEarned Float?
+  createdAt        DateTime @default(now())
+}
+
+model ViewSnapshot {
+  id        String   @id @default(cuid())
+  poolId    String
+  pool      Pool     @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  views     Int
+  timestamp DateTime @default(now())
+}
+
+model Waitlist {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+}
