@@ -5,7 +5,7 @@ import { motion, useMotionValue, useTransform, animate, useInView } from "framer
 import { ArrowRight, Clock, Users, TrendingUp } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import {
-  getPlatformStats, getMarkets, stroopsToXlm, formatViews, computePercent,
+  getPlatformStats, getMarkets, stroopsToXlm, formatViews, computePercent, formatWindowLabel,
   type PlatformStats, type Market, type MarketContent,
 } from "@/lib/api";
 
@@ -74,19 +74,21 @@ function LiveBar({ pct, color }: { pct: number; color: string }) {
 type FeaturedMarket = Market & { content?: MarketContent };
 
 function LiveCard({ market }: { market: FeaturedMarket | null }) {
-  const hasLiquidity = market ? Number(market.yes_pool) + Number(market.no_pool) > 0 : false;
-  const yesPct = market ? (hasLiquidity ? computePercent(market.yes_pool, market.no_pool) : 0) : 68;
-  const noPct = market ? (hasLiquidity ? 100 - yesPct : 0) : 32;
+  const yesPct: number | null = market ? computePercent(market.yes_pool, market.no_pool) : 68;
+  const noPct: number | null = market ? (yesPct === null ? null : 100 - yesPct) : 32;
   const totalXlm = market
     ? parseFloat(stroopsToXlm(String(Number(market.yes_pool) + Number(market.no_pool))))
     : 0;
   const bettors = market?.total_bettors ?? 0;
   const channel = market?.content?.channel ?? "HYPEPOOL";
   const threshold = market ? formatViews(market.threshold) : "100M";
-  const windowH = market?.window_hours ?? 48;
+  const windowLbl =
+    market != null
+      ? formatWindowLabel(market.window_hours, market.window_unit)
+      : formatWindowLabel(48, "hours");
   const title = market?.content?.title
-    ? `WILL "${market.content.title.slice(0, 40).toUpperCase()}" HIT ${threshold} VIEWS IN ${windowH}H?`
-    : `WILL THIS VIDEO HIT ${threshold} VIEWS IN ${windowH} HOURS?`;
+    ? `WILL "${market.content.title.slice(0, 40).toUpperCase()}" HIT ${threshold} VIEWS WITHIN ${windowLbl}?`
+    : `WILL THIS VIDEO HIT ${threshold} VIEWS WITHIN ${windowLbl}?`;
 
   // Real countdown from deadline
   const [timeStr, setTimeStr] = useState("--:--:--");
@@ -129,9 +131,14 @@ function LiveCard({ market }: { market: FeaturedMarket | null }) {
             />
             <span className="text-[9px] font-black text-primary tracking-[0.3em] uppercase">LIVE MARKET</span>
           </div>
-          <div className="flex items-center gap-1.5 text-[10px] font-black text-muted-foreground">
-            <Clock className="w-3 h-3" />
-            <span className="tabular-nums">{timeStr}</span>
+          <div className="flex flex-col items-end gap-0.5">
+            <span className="text-[8px] font-black text-muted-foreground uppercase tracking-[0.2em]">
+              Until market close
+            </span>
+            <div className="flex items-center gap-1.5 text-[10px] font-black text-muted-foreground">
+              <Clock className="w-3 h-3 shrink-0" />
+              <span className="tabular-nums">{timeStr}</span>
+            </div>
           </div>
         </div>
 
@@ -177,16 +184,16 @@ function LiveCard({ market }: { market: FeaturedMarket | null }) {
           <div>
             <div className="flex justify-between mb-1.5">
               <span className="text-[9px] font-black text-primary tracking-widest">YES</span>
-              <span className="text-[9px] font-black text-primary">{yesPct}%</span>
+              <span className="text-[9px] font-black text-primary">{yesPct === null ? "—" : `${yesPct}%`}</span>
             </div>
-            <LiveBar pct={yesPct} color="#00FF85" />
+            <LiveBar pct={yesPct ?? 0} color="#00FF85" />
           </div>
           <div>
             <div className="flex justify-between mb-1.5">
               <span className="text-[9px] font-black text-muted-foreground tracking-widest">NO</span>
-              <span className="text-[9px] font-black text-muted-foreground">{noPct}%</span>
+              <span className="text-[9px] font-black text-muted-foreground">{noPct === null ? "—" : `${noPct}%`}</span>
             </div>
-            <LiveBar pct={noPct} color="rgba(255,255,255,0.25)" />
+            <LiveBar pct={noPct ?? 0} color="rgba(255,255,255,0.25)" />
           </div>
         </div>
 
@@ -221,7 +228,11 @@ function LiveCard({ market }: { market: FeaturedMarket | null }) {
       >
         <TrendingUp className="w-3 h-3 text-primary" />
         <span className="text-[9px] font-black text-primary tracking-widest">
-          {yesPct > 50 ? `${yesPct}% BETTING YES` : `${noPct}% BETTING NO`}
+          {market && yesPct === null
+            ? "NO STAKES YET"
+            : yesPct !== null && yesPct > 50
+              ? `${yesPct}% BETTING YES`
+              : `${noPct ?? 0}% BETTING NO`}
         </span>
       </motion.div>
 
@@ -327,7 +338,7 @@ export default function Hero() {
           const items = res.markets.map((m) => {
             const ch = m.content?.channel ?? "UNKNOWN";
             const thr = formatViews(m.threshold);
-            return `${ch} • ${thr} views in ${m.window_hours}h`;
+            return `${ch} • ${thr} views · ${formatWindowLabel(m.window_hours, m.window_unit)}`;
           });
           setTickerItems(items.length >= 3 ? items : FALLBACK_TICKER);
         }

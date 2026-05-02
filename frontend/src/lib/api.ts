@@ -1,3 +1,4 @@
+/** Deployed apps must set this to the HTTPS API origin, e.g. https://api.example.com/api */
 const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001/api";
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
@@ -24,6 +25,38 @@ export interface TiersResponse {
   available_windows: number[];
   window_unit?: "hours" | "minutes";
   existing_markets: { threshold: number; window_hours: number; market_id: string }[];
+}
+
+/** First tier + window pair that does not already have a market for this video. */
+export function pickFirstAvailableTierWindow(data: TiersResponse): {
+  tier: number | null;
+  window: number;
+} {
+  for (const t of data.available_tiers) {
+    for (const w of data.available_windows) {
+      const taken = data.existing_markets.some(
+        (m) => m.threshold === t && m.window_hours === w
+      );
+      if (!taken) return { tier: t, window: w };
+    }
+  }
+  const fallbackWindow = data.available_windows.includes(24)
+    ? 24
+    : data.available_windows[0] ?? 24;
+  return {
+    tier: data.available_tiers[0] ?? null,
+    window: fallbackWindow,
+  };
+}
+
+/** True when every combination of available tier × window already exists. */
+export function allTierWindowSlotsTaken(data: TiersResponse): boolean {
+  if (data.available_tiers.length === 0 || data.available_windows.length === 0) return false;
+  return data.available_tiers.every((t) =>
+    data.available_windows.every((w) =>
+      data.existing_markets.some((m) => m.threshold === t && m.window_hours === w)
+    )
+  );
 }
 
 export interface MarketCreated {
@@ -58,12 +91,23 @@ export interface BetResponse {
   };
 }
 
+export type WindowUnit = "hours" | "minutes";
+
+/** Prediction window length; avoids ambiguous H/M next to view counts (e.g. 1M views vs 1 min). */
+export function formatWindowLabel(value: number, unit?: WindowUnit): string {
+  const u = unit ?? "hours";
+  if (u === "minutes") return value === 1 ? "1 min" : `${value} min`;
+  return value === 1 ? "1 hr" : `${value} hr`;
+}
+
 export interface Market {
   id: string;
   onchain_id: number;
   contract_address: string;
   threshold: number;
   window_hours: number;
+  /** From API: matches backend MARKET_WINDOW_UNIT */
+  window_unit?: WindowUnit;
   deadline: string;
   resolution_deadline: string;
   min_bet: string;
@@ -93,6 +137,7 @@ export interface MarketDetail extends Market {
     id: string;
     threshold: number;
     window_hours: number;
+    window_unit?: WindowUnit;
     deadline: string;
     status: "ACTIVE" | "RESOLVED_YES" | "RESOLVED_NO" | "EXPIRED";
     yes_pool: string;
@@ -157,8 +202,18 @@ export interface BetRecord {
   amount: string;
   payout: string | null;
   claimed: boolean;
+  /** On-chain tx where the bet (token transfer) was submitted */
   tx_hash: string;
-  created_at: string;
+  /** On-chain tx where winnings were claimed (after resolution); null until claimed */
+  claim_tx_hash: string | null;
+  placed_at: string;
+}
+
+/** Open transaction on Stellar Expert (matches NEXT_PUBLIC_STELLAR_NETWORK). */
+export function stellarExpertTxUrl(txHash: string): string {
+  const n = (process.env.NEXT_PUBLIC_STELLAR_NETWORK || "TESTNET").toUpperCase();
+  const network = n === "MAINNET" ? "public" : "testnet";
+  return `https://stellar.expert/explorer/${network}/tx/${txHash}`;
 }
 
 export interface WalletInfo {
@@ -198,10 +253,21 @@ export function placeBet(
   });
 }
 
-export function confirmTx(interaction_id: string, tx_hash: string): Promise<{ status: string }> {
+export function confirmTx(
+  interaction_id: string,
+  tx_hash: string
+): Promise<{ status: string; market_id?: string }> {
   return req("/confirm", {
     method: "POST",
     body: JSON.stringify({ interaction_id, tx_hash }),
+  });
+}
+
+/** Testnet only — backend must enable ENABLE_TESTNET_TOKEN_FAUCET + TOKEN_FAUCET_SECRET_KEY */
+export function fundCustodialTestnetTokens(user_address: string): Promise<{ tx_hash: string }> {
+  return req("/wallet/fund-token-testnet", {
+    method: "POST",
+    body: JSON.stringify({ user_address }),
   });
 }
 
@@ -306,14 +372,15 @@ export function formatDeadline(deadline: string): string {
   if (diff <= 0) return "CLOSED";
   const h = Math.floor(diff / 3_600_000);
   const m = Math.floor((diff % 3_600_000) / 60_000);
-  return `${h}H ${String(m).padStart(2, "0")}M`;
+  return `${h}h ${String(m).padStart(2, "0")}m`;
 }
 
-export function computePercent(yesPool: string | number, noPool: string | number): number {
+/** Share of YES pool in total liquidity; `null` when there are no stakes (do not show as 50/50). */
+export function computePercent(yesPool: string | number, noPool: string | number): number | null {
   const yes = Number(yesPool);
   const no = Number(noPool);
   const total = yes + no;
-  if (total === 0) return 50;
+  if (total === 0) return null;
   return Math.round((yes / total) * 100);
 }
 

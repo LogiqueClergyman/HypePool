@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, ReactNode, useMemo } from "react";
 import { getWallet, createWallet, type WalletInfo } from "@/lib/api";
 
 export interface WalletState {
@@ -12,6 +12,8 @@ export interface WalletState {
 }
 
 interface WalletContextValue extends WalletState {
+  /** True when NEXT_PUBLIC_STELLAR_NETWORK disagrees with Freighter’s network */
+  networkMismatch: boolean;
   connect: () => Promise<void>;
   disconnect: () => void;
   connecting: boolean;
@@ -126,9 +128,25 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     })();
   }, [fetchCustodialWallet]);
 
+  const networkMismatch = useMemo(() => {
+    const expected = process.env.NEXT_PUBLIC_STELLAR_NETWORK?.trim().toUpperCase();
+    if (expected !== "TESTNET" && expected !== "MAINNET") return false;
+    if (!state.connected || !state.network) return false;
+    return state.network !== expected;
+  }, [state.connected, state.network]);
+
   return (
     <WalletContext.Provider
-      value={{ ...state, connect, disconnect, connecting, error, createCustodialWallet, refreshCustodialWallet }}
+      value={{
+        ...state,
+        networkMismatch,
+        connect,
+        disconnect,
+        connecting,
+        error,
+        createCustodialWallet,
+        refreshCustodialWallet,
+      }}
     >
       {children}
     </WalletContext.Provider>

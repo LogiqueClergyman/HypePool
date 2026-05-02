@@ -2,7 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { useWallet } from "@/contexts/WalletContext";
-import { withdrawWallet, stroopsToXlm, xlmToStroops } from "@/lib/api";
+import { withdrawWallet, stroopsToXlm, xlmToStroops, fundCustodialTestnetTokens } from "@/lib/api";
 import { Loader2, RefreshCw, Wallet, ArrowUpRight, Copy, ExternalLink } from "lucide-react";
 
 export default function CustodialWalletPanel() {
@@ -21,6 +21,7 @@ export default function CustodialWalletPanel() {
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [fundAmount, setFundAmount] = useState("2");
   const [funding, setFunding] = useState(false);
+  const [tokenFunding, setTokenFunding] = useState(false);
   const [withdrawing, setWithdrawing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -35,7 +36,7 @@ export default function CustodialWalletPanel() {
     setSuccess(null);
     try {
       await createCustodialWallet();
-      setSuccess("Custodial wallet created and funded.");
+      setSuccess("Custodial wallet created. Send XLM for fees and platform tokens for bets (see below).");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create custodial wallet.");
     }
@@ -141,6 +142,22 @@ export default function CustodialWalletPanel() {
     }
   };
 
+  const handleTestnetTokenTopUp = async () => {
+    if (!address) return;
+    setError(null);
+    setSuccess(null);
+    setTokenFunding(true);
+    try {
+      await fundCustodialTestnetTokens(address);
+      await refreshCustodialWallet();
+      setSuccess("Testnet platform token transfer submitted. Wait a few seconds and refresh balance.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Token faucet request failed (enable ENABLE_TESTNET_TOKEN_FAUCET on API).");
+    } finally {
+      setTokenFunding(false);
+    }
+  };
+
   const handleCopyAddress = async () => {
     if (!custodialWallet) return;
     try {
@@ -208,7 +225,9 @@ export default function CustodialWalletPanel() {
               <div className="border border-white/10 p-3 bg-black/50 space-y-2">
                 <p className="text-[11px] font-black uppercase tracking-widest text-white">Fund your wallet</p>
                 <p className="text-xs text-muted-foreground">
-                  Auto-funding is disabled. Send XLM on-chain to your custodial address before placing bets.
+                  Bets use the platform <span className="text-white/90">Soroban token</span>, not XLM. XLM only pays
+                  network fees. Send XLM to the custodial address for fees, then ensure the custodial account holds the
+                  platform token (testnet: use &quot;Get test tokens&quot; when the API faucet is enabled).
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <div className="flex items-center gap-2">
@@ -249,6 +268,17 @@ export default function CustodialWalletPanel() {
                       <ExternalLink className="w-3.5 h-3.5" />
                       Open Friendbot
                     </a>
+                  )}
+                  {network === "TESTNET" && (
+                    <button
+                      type="button"
+                      onClick={handleTestnetTokenTopUp}
+                      disabled={tokenFunding}
+                      className="h-9 px-3 border border-primary/50 text-[11px] font-black uppercase tracking-widest text-primary hover:bg-primary/10 disabled:opacity-50 inline-flex items-center gap-2"
+                    >
+                      {tokenFunding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                      {tokenFunding ? "Requesting…" : "Get test tokens (platform)"}
+                    </button>
                   )}
                   <button
                     type="button"

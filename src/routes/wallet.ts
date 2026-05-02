@@ -6,6 +6,7 @@ import { WalletService } from '../services/wallet';
 import { AppError } from '../lib/errors';
 import { config } from '../config';
 import { Horizon, TransactionBuilder, Operation, Asset } from '@stellar/stellar-sdk';
+import { getStellarService } from '../services/stellar';
 
 const horizon = new Horizon.Server(config.stellar.horizonUrl);
 
@@ -44,6 +45,44 @@ router.post('/create', validate(createSchema), async (req: Request, res: Respons
       custodial_address: wallet.custodialAddress,
       status: 'pending_funding'
     });
+  } catch (error) {
+    next(error);
+  }
+});
+
+const fundTokenSchema = z.object({
+  user_address: z.string().trim().min(56).max(69),
+});
+
+/** Testnet-only: send platform token from treasury to the user’s custodial account for betting. */
+router.post('/fund-token-testnet', validate(fundTokenSchema), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    if (!config.tokenFaucet.enabled) {
+      throw new AppError(403, 'faucet_disabled', 'Testnet token faucet is disabled');
+    }
+    if (!config.tokenFaucet.secretKey) {
+      throw new AppError(503, 'faucet_misconfigured', 'TOKEN_FAUCET_SECRET_KEY is not configured');
+    }
+
+    const { user_address } = req.body;
+
+    const user = await prisma.user.findUnique({
+      where: { stellarAddress: user_address },
+      include: { custodialWallet: true },
+    });
+
+    if (!user?.custodialWallet) {
+      throw new AppError(404, 'no_custodial', 'Create a custodial wallet first');
+    }
+
+    const stellar = getStellarService();
+    const { txHash } = await stellar.transferToken(
+      config.tokenFaucet.secretKey,
+      user.custodialWallet.custodialAddress,
+      config.tokenFaucet.amountRaw
+    );
+
+    return res.status(200).json({ tx_hash: txHash });
   } catch (error) {
     next(error);
   }

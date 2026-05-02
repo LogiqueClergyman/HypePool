@@ -72,6 +72,7 @@ const writeLimiter = rateLimit({
 app.use('/api/content/submit', writeLimiter);
 app.use('/api/markets/:id/bet', writeLimiter);
 app.use('/api/wallet/create', writeLimiter);
+app.use('/api/wallet/fund-token-testnet', writeLimiter);
 
 // Health check — before auth/rate limit so load balancers can reach it freely
 app.get('/health', async (_req, res) => {

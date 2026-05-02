@@ -13,14 +13,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   getFeed, getContentTiers, submitContent,
-  formatViews, computePercent, stroopsToXlm, formatDeadline,
+  formatViews, computePercent, stroopsToXlm, formatDeadline, formatWindowLabel,
   type FeedItem, type TiersResponse,
 } from "@/lib/api";
+import { completeMarketCreateInteractions } from "@/lib/completeMarketSubmit";
 import { cn } from "@/lib/utils";
 function FeaturedContentCard({ item, index }: { item: FeedItem; index: number }) {
   const { content, markets, total_volume, total_bettors } = item;
   const primaryMarket = markets.find(m => m.status === "ACTIVE") ?? markets[0];
-  const percent = primaryMarket ? computePercent(primaryMarket.yes_pool, primaryMarket.no_pool) : 0;
+  const percent = primaryMarket ? computePercent(primaryMarket.yes_pool, primaryMarket.no_pool) : null;
 
   return (
     <motion.div
@@ -42,7 +43,11 @@ function FeaturedContentCard({ item, index }: { item: FeedItem; index: number })
           </div>
           
           <h2 className="text-2xl md:text-3xl font-black text-white uppercase italic tracking-tighter leading-[1.1] mb-8 line-clamp-3 group-hover:textShadow-[0_0_15px_rgba(255,255,255,0.3)] transition-all">
-            WILL [{content.title}] HIT {formatViews(primaryMarket?.threshold || 0)} VIEWS IN {primaryMarket?.window_hours}H?
+            WILL [{content.title}] HIT {formatViews(primaryMarket?.threshold || 0)} VIEWS WITHIN{" "}
+            {primaryMarket
+              ? formatWindowLabel(primaryMarket.window_hours, primaryMarket.window_unit)
+              : "—"}
+            ?
           </h2>
 
           <div className="space-y-4 mb-8 pr-4">
@@ -52,20 +57,23 @@ function FeaturedContentCard({ item, index }: { item: FeedItem; index: number })
                   <span className="text-white">YES</span>
                   <span className="px-2 py-0.5 text-[8px] bg-primary/20 border border-primary/40 text-primary rounded-sm tracking-widest">LIVE MARKET</span>
                 </div>
-                <span className="text-primary">{percent}%</span>
+                <span className="text-primary">{percent !== null ? `${percent}%` : "—"}</span>
               </div>
               <div className="h-1.5 w-full bg-white/10 flex rounded-full overflow-hidden">
-                <div className="h-full bg-primary shadow-[0_0_10px_rgba(0,255,128,0.5)]" style={{ width: `${percent}%` }} />
+                <div
+                  className="h-full bg-primary shadow-[0_0_10px_rgba(0,255,128,0.5)]"
+                  style={{ width: `${percent ?? 0}%` }}
+                />
               </div>
             </div>
             
             <div className="space-y-2">
               <div className="flex justify-between items-center text-[10px] font-black uppercase">
                 <span className="text-white">NO</span>
-                <span className="text-white/60">{100 - percent}%</span>
+                <span className="text-white/60">{percent !== null ? `${100 - percent}%` : "—"}</span>
               </div>
               <div className="h-1.5 w-full bg-white/10 flex rounded-full overflow-hidden">
-                <div className="h-full bg-white/30" style={{ width: `${100 - percent}%` }} />
+                <div className="h-full bg-white/30" style={{ width: `${percent !== null ? 100 - percent : 0}%` }} />
               </div>
             </div>
           </div>
@@ -114,7 +122,7 @@ function ContentCard({ item, index }: { item: FeedItem; index: number }) {
   const { content, markets, total_volume } = item;
   const primaryMarket = markets.find(m => m.status === "ACTIVE") ?? markets[0];
   const activeCount = markets.filter(m => m.status === "ACTIVE").length;
-  const percent = primaryMarket ? computePercent(primaryMarket.yes_pool, primaryMarket.no_pool) : 0;
+  const percent = primaryMarket ? computePercent(primaryMarket.yes_pool, primaryMarket.no_pool) : null;
 
   return (
     <motion.div
@@ -162,17 +170,27 @@ function ContentCard({ item, index }: { item: FeedItem; index: number }) {
             <div className="flex justify-between items-center mb-3">
                <div>
                   <p className="text-[10px] font-black text-white">{formatViews(primaryMarket.threshold)}</p>
-                  <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-widest mt-0.5">{primaryMarket.window_hours}H WINDOW</p>
+                  <p className="text-[8px] text-muted-foreground font-bold uppercase tracking-widest mt-0.5">
+                    {formatWindowLabel(primaryMarket.window_hours, primaryMarket.window_unit)} window
+                  </p>
                 </div>
-                <div className="flex-1 px-4">
-                  <div className="flex items-center justify-between text-[9px] font-black mb-1">
-                    <span className="text-primary">{percent}%</span>
-                    <span className="text-white/40">{100 - percent}%</span>
-                  </div>
-                  <div className="h-1 w-full bg-white/10 overflow-hidden flex rounded-full">
-                    <div className="h-full bg-primary" style={{ width: `${percent}%` }} />
-                    <div className="h-full bg-white/20" style={{ width: `${100 - percent}%` }} />
-                  </div>
+                <div className="flex-1 px-4 min-w-0">
+                  {percent === null ? (
+                    <div className="h-6 flex items-center justify-center rounded-full bg-white/[0.06] border border-white/10">
+                      <span className="text-[8px] font-black text-white/35 uppercase tracking-widest">No stakes</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between text-[9px] font-black mb-1">
+                        <span className="text-primary">{percent}%</span>
+                        <span className="text-white/40">{100 - percent}%</span>
+                      </div>
+                      <div className="h-1 w-full bg-white/10 overflow-hidden flex rounded-full">
+                        <div className="h-full bg-primary" style={{ width: `${percent}%` }} />
+                        <div className="h-full bg-white/20" style={{ width: `${100 - percent}%` }} />
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div className="text-right">
                   <p className="text-[10px] font-black text-white">{stroopsToXlm(total_volume)} XLM</p>
@@ -200,7 +218,7 @@ function CreateMarketModal({ onClose, userAddress, onCreated, initialUrl }: {
   initialUrl?: string;
 }) {
   const router = useRouter();
-  const { connect, connecting } = useWallet();
+  const { connect, connecting, network } = useWallet();
   const [step, setStep] = useState<ModalStep>("idle");
   const [url, setUrl] = useState(initialUrl ?? "");
   const [tiers, setTiers] = useState<TiersResponse | null>(null);
@@ -251,13 +269,23 @@ function CreateMarketModal({ onClose, userAddress, onCreated, initialUrl }: {
     setError(null);
     try {
       const result = await submitContent(url.trim(), [selectedTier], [selectedWindow], userAddress);
-      if (result.markets_created?.length) {
-        setSuccessMsg(`Market created! Threshold: ${formatViews(result.markets_created[0].threshold)}`);
-      } else {
-        setSuccessMsg("Market submitted successfully.");
+      const createdId = await completeMarketCreateInteractions(result, network);
+      if (createdId) {
+        const thresh =
+          result.markets_created?.[0]?.threshold ??
+          selectedTier ??
+          0;
+        setSuccessMsg(`Market created! Threshold: ${formatViews(thresh)}`);
+        setStep("success");
+        onCreated();
+        setTimeout(() => {
+          onClose();
+          router.push(`/markets/${createdId}`);
+        }, 600);
+        return;
       }
-      setStep("success");
-      onCreated();
+      setError("Could not finalize market creation (missing on-chain confirmation).");
+      setStep("error");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to create market.");
       setStep("error");

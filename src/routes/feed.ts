@@ -2,6 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { validateQuery } from '../middleware/validate';
 import { prisma } from '../lib/prisma';
+import { config } from '../config';
 
 const router = Router();
 
@@ -36,6 +37,7 @@ router.get('/', validateQuery(feedQuerySchema), async (req: Request, res: Respon
           id: m.id,
           threshold: Number(m.threshold),
           window_hours: m.windowHours,
+          window_unit: config.market.windowUnit,
           deadline: m.deadline.toISOString(),
           yes_pool: m.yesPool.toString(),
           no_pool: m.noPool.toString(),

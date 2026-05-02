@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Logo } from "./Logo";
+import { useWallet } from "@/contexts/WalletContext";
 
 const XIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
@@ -13,6 +14,7 @@ const XIcon = () => (
 );
 
 export default function Navbar() {
+  const { networkMismatch } = useWallet();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -28,7 +30,8 @@ export default function Navbar() {
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
       className={cn(
-        "fixed top-0 left-0 right-0 z-50 transition-all duration-500",
+        "fixed left-0 right-0 z-50 transition-all duration-500",
+        networkMismatch ? "top-10" : "top-0",
         scrolled
           ? "bg-black/80 backdrop-blur-xl border-b border-white/[0.06] py-4"
           : "bg-transparent py-7"

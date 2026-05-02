@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { validateQuery } from '../middleware/validate';
 import { prisma } from '../lib/prisma';
 import { AppError } from '../lib/errors';
+import { config } from '../config';
 
 const router = Router();
 
@@ -62,6 +63,7 @@ router.get('/', validateQuery(marketsQuerySchema), async (req: Request, res: Res
         },
         threshold: Number(m.threshold),
         window_hours: m.windowHours,
+        window_unit: config.market.windowUnit,
         deadline: m.deadline.toISOString(),
         yes_pool: m.yesPool.toString(),
         no_pool: m.noPool.toString(),
@@ -127,6 +129,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
       },
       threshold: Number(market.threshold),
       window_hours: market.windowHours,
+      window_unit: config.market.windowUnit,
       deadline: market.deadline.toISOString(),
       resolution_deadline: market.resolutionDeadline.toISOString(),
       min_bet: market.minBet.toString(),
@@ -141,6 +144,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
         id: m.id,
         threshold: Number(m.threshold),
         window_hours: m.windowHours,
+        window_unit: config.market.windowUnit,
         deadline: m.deadline.toISOString(),
         status: m.status,
         yes_pool: m.yesPool.toString(),

@@ -10,10 +10,11 @@ import {
   getUserBets,
   stroopsToXlm,
   formatViews,
+  stellarExpertTxUrl,
   type Portfolio,
   type BetRecord,
 } from "@/lib/api";
-import { Zap } from "lucide-react";
+import { Zap, ExternalLink } from "lucide-react";
 import CustodialWalletPanel from "@/components/CustodialWalletPanel";
 
 type FilterTab = "all" | "active" | "won" | "lost";
@@ -61,6 +62,8 @@ function BetCard({ bet, delay = 0 }: { bet: BetRecord; delay?: number }) {
   const isWon = !isActive && outcome !== null && side === outcome;
   const isLost = !isActive && outcome !== null && side !== outcome;
   const thresholdStr = formatViews(Number(bet.market.threshold));
+  const betTxHref = bet.tx_hash ? stellarExpertTxUrl(bet.tx_hash) : null;
+  const claimTxHref = bet.claim_tx_hash ? stellarExpertTxUrl(bet.claim_tx_hash) : null;
 
   return (
     <motion.div
@@ -102,6 +105,35 @@ function BetCard({ bet, delay = 0 }: { bet: BetRecord; delay?: number }) {
           <span className="text-[9px] text-muted-foreground tracking-widest">
             {amount} XLM
           </span>
+        </div>
+        <div className="mt-2 flex flex-col gap-1">
+          {betTxHref && (
+            <a
+              href={betTxHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[8px] font-bold text-muted-foreground hover:text-[#00FF85] tracking-wide"
+            >
+              <ExternalLink className="w-3 h-3 shrink-0 opacity-70" />
+              Bet on-chain (explorer)
+            </a>
+          )}
+          {isWon && !bet.claimed && (
+            <p className="text-[8px] text-amber-400/90 font-bold tracking-wide">
+              Win settled — payout processing (backend auto-claim). Refresh shortly.
+            </p>
+          )}
+          {isWon && bet.claimed && claimTxHref && (
+            <a
+              href={claimTxHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[8px] font-bold text-muted-foreground hover:text-[#00FF85] tracking-wide"
+            >
+              <ExternalLink className="w-3 h-3 shrink-0 opacity-70" />
+              Payout / claim on-chain
+            </a>
+          )}
         </div>
       </div>
 
@@ -279,6 +311,17 @@ export default function PortfolioPage() {
           delay={0.15}
         />
       </div>
+
+      <p className="text-[10px] text-muted-foreground leading-relaxed mb-6 border border-white/10 bg-white/[0.02] px-4 py-3">
+        <span className="font-black text-white/80 uppercase tracking-widest text-[9px] block mb-1">
+          Transactions
+        </span>
+        Every bet and payout is a Stellar transaction. Use{" "}
+        <strong className="text-white/90">Bet on-chain</strong> to confirm your stake went through. After you win,{" "}
+        <strong className="text-white/90">Payout / claim</strong> shows the claim tx once processed (custodial and
+        Freighter bets are recorded under your connected account; stakes move from your custodial address when using
+        custodial mode).
+      </p>
 
       {/* Tabs */}
       <div className="flex border-b border-white/8 mb-6">

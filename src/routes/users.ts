@@ -119,6 +119,8 @@ router.get('/:address/bets', validateQuery(betsQuerySchema), async (req: Request
         amount: b.amount.toString(),
         payout: b.payout?.toString() || null,
         claimed: b.claimed,
+        tx_hash: b.txHash,
+        claim_tx_hash: b.claimTxHash ?? null,
         placed_at: b.createdAt.toISOString()
       })),
       total,

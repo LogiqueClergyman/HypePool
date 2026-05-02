@@ -12,7 +12,7 @@ type Pool = {
   thumbnail: string;
   timeLeft: string;
   totalStaked: number;
-  yesPercent: number;
+  yesPercent: number | null;
   bettors: number;
   tag: string;
   hot: boolean;
@@ -108,24 +108,28 @@ function PoolCard({ pool, index }: { pool: Pool; index: number }) {
           <div>
             <div className="flex justify-between mb-1">
               <span className="text-[8px] font-black text-primary tracking-widest">YES</span>
-              <span className="text-[8px] font-black text-primary">{pool.yesPercent}%</span>
+              <span className="text-[8px] font-black text-primary">
+                {pool.yesPercent === null ? "—" : `${pool.yesPercent}%`}
+              </span>
             </div>
             <div className="h-1.5 bg-white/5 w-full">
               <div
                 className="h-full bg-primary transition-all duration-700"
-                style={{ width: `${pool.yesPercent}%` }}
+                style={{ width: `${pool.yesPercent ?? 0}%` }}
               />
             </div>
           </div>
           <div>
             <div className="flex justify-between mb-1">
               <span className="text-[8px] font-black text-muted-foreground tracking-widest">NO</span>
-              <span className="text-[8px] font-black text-muted-foreground">{100 - pool.yesPercent}%</span>
+              <span className="text-[8px] font-black text-muted-foreground">
+                {pool.yesPercent === null ? "—" : `${100 - pool.yesPercent}%`}
+              </span>
             </div>
             <div className="h-1.5 bg-white/5 w-full">
               <div
                 className="h-full bg-white/30 transition-all duration-700"
-                style={{ width: `${100 - pool.yesPercent}%` }}
+                style={{ width: `${pool.yesPercent === null ? 0 : 100 - pool.yesPercent}%` }}
               />
             </div>
           </div>
@@ -181,7 +185,7 @@ export default function LivePools() {
             const yes = Number(m.yes_pool);
             const no = Number(m.no_pool);
             const total = yes + no;
-            const yesPct = total > 0 ? computePercent(m.yes_pool, m.no_pool) : 0;
+            const yesPct = computePercent(m.yes_pool, m.no_pool);
             const totalXlm = Number(stroopsToXlm(total));
             return {
               id: m.id,

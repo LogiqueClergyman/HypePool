@@ -90,7 +90,7 @@ router.post('/', validate(confirmSchema), async (req: Request, res: Response, ne
         throw new AppError(400, 'tx_no_return', 'Transaction did not return expected market data');
       }
 
-      await prisma.market.create({
+      const created = await prisma.market.create({
         data: {
           contentId: meta.contentId,
           onchainId,
@@ -102,6 +102,8 @@ router.post('/', validate(confirmSchema), async (req: Request, res: Response, ne
           minBet: BigInt(1_000_000),
         }
       });
+
+      return res.status(200).json({ status: 'confirmed', market_id: created.id });
     }
 
     return res.status(200).json({ status: 'confirmed' });

@@ -45,6 +45,27 @@ export default function VideoPanel({ videoId, contentData, market, refreshTrigge
           <h2 className="text-base font-black text-white italic tracking-tighter leading-tight mb-3 uppercase line-clamp-2">
             {contentData.title}
           </h2>
+          {market && (
+            <div className="mb-4 pb-4 border-b border-white/10 space-y-1">
+              <p className="text-[9px] font-black text-[#00FF85] uppercase tracking-widest">
+                Prediction window (market)
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                Opened{" "}
+                {new Date(market.created_at).toLocaleString(undefined, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                Betting closes{" "}
+                {new Date(market.deadline).toLocaleString(undefined, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}
+              </p>
+            </div>
+          )}
           <div className="flex items-center gap-6 flex-wrap">
             <div className="flex items-center gap-2">
               <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">
@@ -63,6 +84,7 @@ export default function VideoPanel({ videoId, contentData, market, refreshTrigge
             <div className="flex items-center gap-2">
               <Calendar className="w-3 h-3 text-muted-foreground" />
               <span className="text-[9px] font-black text-muted-foreground tracking-widest">
+                Published{" "}
                 {new Date(contentData.published_at).toLocaleDateString("en-US", {
                   month: "short",
                   year: "numeric",

@@ -28,10 +28,10 @@ export const MAX_TIERS = isTestMode
   ? 1
   : Number(process.env.MARKET_MAX_TIERS || '4');
 
-// Available time windows in hours
+// With APP_MODE=testmode, defaults to [1] minute; override via MARKET_TIME_WINDOWS=1
 const DEFAULT_TIME_WINDOWS = [12, 24, 48, 72];
 export const TIME_WINDOWS: number[] = isTestMode
-  ? [1]
+  ? parseEnvNumberList('MARKET_TIME_WINDOWS', [1])
   : parseEnvNumberList('MARKET_TIME_WINDOWS', DEFAULT_TIME_WINDOWS);
 
 // Resolution grace period — oracle has this many hours after deadline to resolve

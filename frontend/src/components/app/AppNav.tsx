@@ -6,10 +6,14 @@ import { User, LogOut, Zap } from "lucide-react";
 import { Logo } from "../Logo";
 
 export default function AppNav() {
-  const { address, connected, connect, disconnect, connecting } = useWallet();
+  const { address, connected, connect, disconnect, connecting, networkMismatch } = useWallet();
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 h-14 border-b border-white/10 bg-[#080808]/90 backdrop-blur-md flex items-center px-6">
+    <header
+      className={`fixed left-0 right-0 z-50 h-14 border-b border-white/10 bg-[#080808]/90 backdrop-blur-md flex items-center px-6 ${
+        networkMismatch ? "top-10" : "top-0"
+      }`}
+    >
       {/* Logo */}
       <Link href="/" className="flex items-center gap-3 mr-10 shrink-0 group">
         <Logo size={22} />

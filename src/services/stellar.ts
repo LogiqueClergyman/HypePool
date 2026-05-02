@@ -1,3 +1,7 @@
+/**
+ * Soroban fees use a fixed `fee: '100'` stroops here. On congested mainnet, consider
+ * calling rpc.Server.getFeeStats() / larger inclusion fees before production launch.
+ */
 import { rpc, Contract, TransactionBuilder, Keypair, nativeToScVal, Address, xdr, scValToNative } from '@stellar/stellar-sdk';
 import { config as appConfig } from '../config';
 import { logger } from '../lib/logger';
@@ -195,8 +199,11 @@ export class StellarService {
     }
     
     logger.debug({ txHash: sendResult.hash, status: txResponse.status }, 'Transaction confirmed');
-    if (txResponse.status === 'FAILED') throw new Error(`Tx Failed on-chain`);
-    
+    if (txResponse.status === 'FAILED') {
+      logger.warn({ txHash: sendResult.hash, txResponse }, 'Transaction failed on-chain');
+      throw new Error(`Tx failed on-chain (${sendResult.hash})`);
+    }
+
     return { txHash: sendResult.hash, txResponse };
   }
 
@@ -281,6 +288,28 @@ export class StellarService {
     if (txResponse.status === 'FAILED') throw new Error('Tx failed on-chain');
     logger.info({ txHash: sendResult.hash }, 'Signed tx submitted and confirmed');
     return { txHash: sendResult.hash };
+  }
+
+  /** SEP-41 style Soroban token transfer (treasury must hold balance + authorize). */
+  async transferToken(
+    treasurySecret: string,
+    toAddress: string,
+    amount: bigint
+  ): Promise<{ txHash: string }> {
+    const treasury = Keypair.fromSecret(treasurySecret);
+    const fromAddr = treasury.publicKey();
+    const tokenAddr = appConfig.stellar.tokenAddress;
+    const xdrStr = await this.buildAndSimulate(
+      fromAddr,
+      tokenAddr,
+      'transfer',
+      [
+        new Address(fromAddr).toScVal(),
+        new Address(toAddress).toScVal(),
+        nativeToScVal(amount, { type: 'i128' }),
+      ]
+    );
+    return this.signAndSubmit(xdrStr, treasury);
   }
 
   async claimForUser(marketAddr: string, userAddr: string): Promise<{ txHash: string; payout: bigint }> {

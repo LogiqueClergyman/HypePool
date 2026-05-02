@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Users, Clock, TrendingUp } from "lucide-react";
-import { type Market, stroopsToXlm, formatViews, formatDeadline, computePercent } from "@/lib/api";
+import { type Market, stroopsToXlm, formatViews, formatDeadline, computePercent, formatWindowLabel } from "@/lib/api";
 
 interface Props {
   market: Market | null;
@@ -26,9 +26,8 @@ export default function MarketStats({ market }: Props) {
   const yesXlm = parseFloat(stroopsToXlm(market.yes_pool));
   const noXlm = parseFloat(stroopsToXlm(market.no_pool));
   const totalXlm = yesXlm + noXlm;
-  const hasLiquidity = totalXlm > 0;
-  const yesPct = hasLiquidity ? computePercent(market.yes_pool, market.no_pool) : 0;
-  const noPct = hasLiquidity ? 100 - yesPct : 0;
+  const yesPct = computePercent(market.yes_pool, market.no_pool);
+  const noPct = yesPct === null ? null : 100 - yesPct;
   const deadline = formatDeadline(market.deadline);
   const threshold = formatViews(market.threshold);
   const isActive = market.status === "ACTIVE";
@@ -54,7 +53,9 @@ export default function MarketStats({ market }: Props) {
         <div>
           <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-1">TARGET THRESHOLD</p>
           <p className="text-2xl font-black text-white italic tracking-tighter">{threshold} VIEWS</p>
-          <p className="text-[9px] text-muted-foreground mt-0.5">within {market.window_hours}h window</p>
+          <p className="text-[9px] text-muted-foreground mt-0.5">
+            within {formatWindowLabel(market.window_hours, market.window_unit)} window
+          </p>
         </div>
 
         {/* Visual pool bar */}
@@ -65,40 +66,46 @@ export default function MarketStats({ market }: Props) {
           </div>
 
           {/* Combined bar */}
-          <div className="h-6 flex w-full overflow-hidden border border-white/5">
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${yesPct}%` }}
-              transition={{ duration: 0.8, ease: "easeOut" }}
-              className="h-full bg-primary flex items-center justify-center"
-            >
-              {yesPct >= 20 && (
-                <span className="text-[8px] font-black text-black tracking-wider">YES {yesPct}%</span>
-              )}
-            </motion.div>
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: `${noPct}%` }}
-              transition={{ duration: 0.8, ease: "easeOut" }}
-              className="h-full bg-white/15 flex items-center justify-center"
-            >
-              {noPct >= 20 && (
-                <span className="text-[8px] font-black text-white/60 tracking-wider">NO {noPct}%</span>
-              )}
-            </motion.div>
-          </div>
+          {yesPct === null || noPct === null ? (
+            <div className="h-6 flex w-full items-center justify-center border border-white/5 bg-white/[0.03]">
+              <span className="text-[8px] font-black text-muted-foreground tracking-[0.2em] uppercase">No stakes yet</span>
+            </div>
+          ) : (
+            <div className="h-6 flex w-full overflow-hidden border border-white/5">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${yesPct}%` }}
+                transition={{ duration: 0.8, ease: "easeOut" }}
+                className="h-full bg-primary flex items-center justify-center"
+              >
+                {yesPct >= 20 && (
+                  <span className="text-[8px] font-black text-black tracking-wider">YES {yesPct}%</span>
+                )}
+              </motion.div>
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${noPct}%` }}
+                transition={{ duration: 0.8, ease: "easeOut" }}
+                className="h-full bg-white/15 flex items-center justify-center"
+              >
+                {noPct >= 20 && (
+                  <span className="text-[8px] font-black text-white/60 tracking-wider">NO {noPct}%</span>
+                )}
+              </motion.div>
+            </div>
+          )}
 
           {/* Pool breakdown */}
           <div className="grid grid-cols-2 gap-3 mt-3">
             <div className="p-3 border border-primary/15 bg-primary/5">
               <p className="text-[8px] font-black text-primary uppercase tracking-widest mb-1">YES POOL</p>
               <p className="text-sm font-black text-white italic">{yesXlm.toFixed(1)} XLM</p>
-              <p className="text-[8px] text-primary/70 font-bold mt-0.5">{yesPct}%</p>
+              <p className="text-[8px] text-primary/70 font-bold mt-0.5">{yesPct === null ? "—" : `${yesPct}%`}</p>
             </div>
             <div className="p-3 border border-white/8 bg-white/[0.02]">
               <p className="text-[8px] font-black text-muted-foreground uppercase tracking-widest mb-1">NO POOL</p>
               <p className="text-sm font-black text-white italic">{noXlm.toFixed(1)} XLM</p>
-              <p className="text-[8px] text-muted-foreground font-bold mt-0.5">{noPct}%</p>
+              <p className="text-[8px] text-muted-foreground font-bold mt-0.5">{noPct === null ? "—" : `${noPct}%`}</p>
             </div>
           </div>
         </div>
